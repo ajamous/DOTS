@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE section PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN"
+   "http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd">
+
+<book id="xmlops" xmlns:xi="http://www.w3.org/2001/XInclude">
+    <title>XMLOPS Module</title>
+    <bookinfo>
+	<authorgroup>
+		<author>
+		<firstname>Daniel-Constantin</firstname>
+		<surname>Mierla</surname>
+		<affiliation><orgname>asipto.com</orgname></affiliation>
+		<email>miconda@gmail.com</email>
+		</author>
+	</authorgroup>
+	<copyright>
+	    <year>2009</year>
+	    <holder>asipto.com</holder>
+	</copyright>
+    </bookinfo>
+
+
+    <xi:include href="xmlops_admin.xml"/>
+
+</book>
+

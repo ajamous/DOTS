@@ -1,0 +1,65 @@
+.TH kamdbctl 8 20.11.2017 Kamailio "Kamailio"
+.SH NAME
+kamdbctl \- Kamailio database control tool
+.SH SYNOPSIS
+.B kamdbctl
+.BI command
+[
+.BI parameters
+]
+
+.SH DESCRIPTION
+.B kamdbctl
+is a script to maintain the database needed by some Kamalio modules.
+
+.SH Configuration
+Before you can use
+.B kamdbctl
+you have to select a database engine in the kamctlrc file.
+Just change the DBENGINE parameter in the respective section in
+.B kamctlrc
+file.
+.TP
+Valid values are: MYSQL, PGSQL, ORACLE, DB_BERKELEY, DBTEXT.
+.TP
+The default is 'none'.
+.TP
+The username, password, database name and other settings can be configured by editing the kamctrl script.
+
+.SH COMMANDS
+Run
+.B kamdbctl help
+to see the list of available commands.
+
+.SH NOTES
+Several commands are not available for some of the database systems.
+
+.SH FILES
+.PD 0
+.I /etc/kamailio/kamctlrc
+.br
+.I /usr/local/etc/kamailio/kamctlrc
+.br
+.I ~/.kamctlrc
+.br
+
+.SH AUTHORS
+
+See
+.B /usr/share/doc/kamailio/AUTHORS
+
+.SH SEE ALSO
+.BR kamailio(8),
+.BR kamailio.cfg(5)
+.PP
+Full documentation on Kamailio is available at
+.I https://www.kamailio.org
+
+.PP
+Mailing lists:
+
+.nf
+sr-users@lists.kamailio.org - Kamailio user community
+.nf
+sr-dev@lists.kamailio.org - Kamailio development community
+

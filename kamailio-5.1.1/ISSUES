@@ -1,0 +1,34 @@
+Reporting Issues
+================
+
+Current set of issues is to be found at our Github Project page:
+
+  * https://github.com/kamailio/kamailio/issues
+
+Issue Report Details
+--------------------
+
+When reporting an issue, gather as much details as possible and include them
+on the bug report. Useful details are:
+
+  * kamailio version (output of kamailio -v)
+  * operating system where server is running
+  * CPU architecture of the system
+  * error log messages from syslog
+  * if there is a coredump file, use gdb to extract the following:
+    - full backtrace (gdb: bt full)
+    - local variables (gdb: info locals)
+    - list of the source code around the issue (gdb: list)
+  * information about when it happens:
+    - at startup
+    - at shutdown
+    - at runtime:
+      ~ randomly (no way to reproduce it has been discovered)
+      ~ periodically (an way to reproduce it has been discovered)
+
+Contact
+-------
+
+If you have further questions about reporting an issue, email to:
+
+  * sr-dev@lists.sip-router.org
