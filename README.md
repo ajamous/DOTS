@@ -1,4 +1,7 @@
 # DOTS
+
+Blockchain:
+
 Decentralized Open Telecommunication System
 
 Abstract. A decentralized version of the telecom industry would allow voice, video, text communications to be sent directly from one party to another without going through a intercepted telecom networks. SIP Registrars & Presence Agent provide part of the solution, but the main benefits are lost if SIP Servers are not interconnected. We propose a solution to this problem using a the DTP network. The decentrerlized SIP registrars and SIP presence agents are replicated across the world, forming a record that cannot be changed . The longest chain not only serves as proof of the sequence of events witnessed, but proof that it came from the largest pool of SIP Servers. The network itself requires minimal structure. Messages are broadcast on a best effort basis, and SIP nodes can leave and rejoin the network at will.
