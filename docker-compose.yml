@@ -1,0 +1,282 @@
+# DOTS 2.0 Phase 1 lab: three operators, four Kamailio instances.
+#
+#   docker compose up -d --wait     # start
+#   make lab-test                   # drive SIPp scenarios and assert results
+#
+# Every key and certificate is generated into the "state" volume by the
+# bootstrap container on first start. Nothing secret is in this file.
+
+x-services-image: &services-image
+  image: dots-services:dev
+  build:
+    context: .
+    dockerfile: services/Dockerfile
+    secrets: [extra_ca]
+
+x-kamailio-image: &kamailio-image
+  image: dots-kamailio:dev
+  build:
+    context: .
+    dockerfile: node/kamailio/Dockerfile
+
+x-rtpengine-image: &rtpengine-image
+  image: dots-rtpengine:dev
+  build:
+    context: .
+    dockerfile: node/rtpengine/Dockerfile
+
+x-sipp-image: &sipp-image
+  image: dots-sipp:dev
+  build:
+    context: .
+    dockerfile: lab/sipp/Dockerfile
+
+x-pg: &pg
+  image: postgres:17-alpine
+  environment:
+    POSTGRES_USER: dots
+    POSTGRES_PASSWORD: dots-lab-only
+    POSTGRES_DB: dots
+  healthcheck:
+    test: ["CMD", "pg_isready", "-U", "dots"]
+    interval: 2s
+    retries: 30
+
+x-receipts: &receipts
+  <<: *services-image
+  command: ["dots-receipts"]
+  volumes: ["state:/state:ro"]
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')"]
+    interval: 3s
+    retries: 40
+
+x-receipts-env: &receipts-env
+  DOTS_PEERS_FILE: /state/peers.json
+  DOTS_RATE_TABLES_DIR: /state/rates
+  DOTS_TLS_CA: /state/ca/ca.pem
+  DOTS_STH_INTERVAL_S: "5"
+  DOTS_MONITOR_INTERVAL_S: "5"
+  DOTS_LAB_MODE: "true"
+
+x-kamailio: &kamailio
+  <<: *kamailio-image
+  volumes: ["state:/state:ro"]
+  healthcheck:
+    test: ["CMD-SHELL", "kamcmd core.uptime >/dev/null"]
+    interval: 3s
+    retries: 40
+
+x-depends-bootstrap: &depends-bootstrap
+  bootstrap:
+    condition: service_completed_successfully
+
+services:
+  bootstrap:
+    <<: *services-image
+    command: ["dots-lab-bootstrap", "--state", "/state", "--topology", "/app/lab/topology.json"]
+    user: "0:0"
+    volumes: ["state:/state"]
+    networks: [sip]
+
+  # ------------------------------------------------------------ node-a (operator A)
+  pg-a:
+    <<: *pg
+    networks: [int-a]
+  receipts-a:
+    <<: *receipts
+    environment:
+      <<: *receipts-env
+      DOTS_NODE_ID: node-a
+      DOTS_DATABASE_URL: postgresql://dots:dots-lab-only@pg-a:5432/dots
+      DOTS_KEY_DIR: /state/node-a/keys
+      DOTS_TLS_CERT: /state/node-a/tls/cert.pem
+      DOTS_TLS_KEY: /state/node-a/tls/key.pem
+      DOTS_INTERNAL_TOKEN_FILE: /state/node-a/token
+    depends_on:
+      <<: *depends-bootstrap
+      pg-a: {condition: service_healthy}
+    networks:
+      sip: {ipv4_address: 172.30.0.14}
+      int-a: {}
+  rtpengine-a:
+    <<: *rtpengine-image
+    networks:
+      sip: {ipv4_address: 172.30.0.13}
+  node-a1:
+    <<: *kamailio
+    hostname: node-a1
+    environment:
+      DOTS_NODE_ID: node-a
+      DOTS_ACCESS_NET: 172.30.0.64/28
+      DOTS_DMQ_PEERS: node-a2
+      DOTS_RTPENGINE: rtpengine-a
+      DOTS_RECEIPTS_URL: http://receipts-a:8080
+    depends_on:
+      <<: *depends-bootstrap
+      rtpengine-a: {condition: service_started}
+    networks:
+      sip: {ipv4_address: 172.30.0.11}
+  node-a2:
+    <<: *kamailio
+    hostname: node-a2
+    environment:
+      DOTS_NODE_ID: node-a
+      DOTS_ACCESS_NET: 172.30.0.64/28
+      DOTS_DMQ_PEERS: node-a1
+      DOTS_RTPENGINE: rtpengine-a
+      DOTS_RECEIPTS_URL: http://receipts-a:8080
+    depends_on:
+      <<: *depends-bootstrap
+      rtpengine-a: {condition: service_started}
+    networks:
+      # Federation traffic for operator A lands on a2, while A's PBX registers
+      # on a1: inbound calls only work if dmq_usrloc replicated the contact.
+      sip: {ipv4_address: 172.30.0.12, aliases: [node-a]}
+  pbx-a:
+    <<: *sipp-image
+    command: ["dots-pbx"]
+    environment: {DOTS_NODE_ID: node-a, REGISTRAR: node-a1}
+    depends_on:
+      node-a1: {condition: service_healthy}
+      node-a2: {condition: service_healthy}
+    networks:
+      sip: {ipv4_address: 172.30.0.66}
+  uac-a:
+    <<: *sipp-image
+    command: ["sleep", "infinity"]
+    networks:
+      sip: {ipv4_address: 172.30.0.65}
+
+  # ------------------------------------------------------------ node-b (operator B)
+  pg-b:
+    <<: *pg
+    networks: [int-b]
+  receipts-b:
+    <<: *receipts
+    environment:
+      <<: *receipts-env
+      DOTS_NODE_ID: node-b
+      DOTS_DATABASE_URL: postgresql://dots:dots-lab-only@pg-b:5432/dots
+      DOTS_KEY_DIR: /state/node-b/keys
+      DOTS_TLS_CERT: /state/node-b/tls/cert.pem
+      DOTS_TLS_KEY: /state/node-b/tls/key.pem
+      DOTS_INTERNAL_TOKEN_FILE: /state/node-b/token
+    depends_on:
+      <<: *depends-bootstrap
+      pg-b: {condition: service_healthy}
+    networks:
+      sip: {ipv4_address: 172.30.0.24}
+      int-b: {}
+  rtpengine-b:
+    <<: *rtpengine-image
+    networks:
+      sip: {ipv4_address: 172.30.0.23}
+  node-b1:
+    <<: *kamailio
+    hostname: node-b1
+    environment:
+      DOTS_NODE_ID: node-b
+      DOTS_ACCESS_NET: 172.30.0.80/28
+      DOTS_RTPENGINE: rtpengine-b
+      DOTS_RECEIPTS_URL: http://receipts-b:8080
+    depends_on:
+      <<: *depends-bootstrap
+      rtpengine-b: {condition: service_started}
+    networks:
+      sip: {ipv4_address: 172.30.0.21, aliases: [node-b]}
+  pbx-b:
+    <<: *sipp-image
+    command: ["dots-pbx"]
+    environment: {DOTS_NODE_ID: node-b, REGISTRAR: node-b1}
+    depends_on:
+      node-b1: {condition: service_healthy}
+    networks:
+      sip: {ipv4_address: 172.30.0.82}
+  uac-b:
+    <<: *sipp-image
+    command: ["sleep", "infinity"]
+    networks:
+      sip: {ipv4_address: 172.30.0.81}
+
+  # ------------------------------------------------------------ node-c (operator C)
+  pg-c:
+    <<: *pg
+    networks: [int-c]
+  receipts-c:
+    <<: *receipts
+    environment:
+      <<: *receipts-env
+      DOTS_NODE_ID: node-c
+      DOTS_DATABASE_URL: postgresql://dots:dots-lab-only@pg-c:5432/dots
+      DOTS_KEY_DIR: /state/node-c/keys
+      DOTS_TLS_CERT: /state/node-c/tls/cert.pem
+      DOTS_TLS_KEY: /state/node-c/tls/key.pem
+      DOTS_INTERNAL_TOKEN_FILE: /state/node-c/token
+      # Lab fault injection for the duration_mismatch scenario: node-c
+      # reports 15 s more than it measured on calls from node-a.
+      DOTS_LAB_SKEW: "node-a:15"
+    depends_on:
+      <<: *depends-bootstrap
+      pg-c: {condition: service_healthy}
+    networks:
+      sip: {ipv4_address: 172.30.0.34}
+      int-c: {}
+  rtpengine-c:
+    <<: *rtpengine-image
+    networks:
+      sip: {ipv4_address: 172.30.0.33}
+  node-c1:
+    <<: *kamailio
+    hostname: node-c1
+    environment:
+      DOTS_NODE_ID: node-c
+      DOTS_ACCESS_NET: 172.30.0.96/28
+      DOTS_RTPENGINE: rtpengine-c
+      DOTS_RECEIPTS_URL: http://receipts-c:8080
+    depends_on:
+      <<: *depends-bootstrap
+      rtpengine-c: {condition: service_started}
+    networks:
+      sip: {ipv4_address: 172.30.0.31, aliases: [node-c]}
+  pbx-c:
+    <<: *sipp-image
+    command: ["dots-pbx"]
+    environment: {DOTS_NODE_ID: node-c, REGISTRAR: node-c1}
+    depends_on:
+      node-c1: {condition: service_healthy}
+    networks:
+      sip: {ipv4_address: 172.30.0.98}
+  uac-c:
+    <<: *sipp-image
+    command: ["sleep", "infinity"]
+    networks:
+      sip: {ipv4_address: 172.30.0.97}
+
+  # ------------------------------------------------------------ test runner
+  tester:
+    <<: *services-image
+    image: dots-tester:dev
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      target: tester
+      secrets: [extra_ca]
+    profiles: [test]
+    volumes: ["state:/state:ro"]
+    networks: [sip]
+
+networks:
+  sip:
+    ipam:
+      config: [{subnet: 172.30.0.0/24}]
+  int-a: {internal: true}
+  int-b: {internal: true}
+  int-c: {internal: true}
+
+volumes:
+  state: {}
+
+secrets:
+  extra_ca:
+    file: ${EXTRA_CA:-/dev/null}

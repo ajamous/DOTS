@@ -6,7 +6,7 @@ Independent operators (carriers, PBX owners, voice-agent platforms) run a DOTS n
 
 The ledger proves *what was exchanged and agreed*. It does not route calls, hold presence, or mint anything. There is no token.
 
-> **Status:** Phase 1, Milestone 1 (repo cleanup and architecture). No service code yet.
+> **Status:** Phase 1. Receipt service, Merkle log and the 3-operator Kamailio lab are working; settlement and the MCP server are next.
 > See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design and [`docs/PLAN.md`](docs/PLAN.md) for the build plan.
 
 ## What a node is
@@ -46,12 +46,18 @@ Upstream projects (Kamailio, rtpengine, SIPp, Postgres) are consumed as packages
 
 ## Quick start
 
-Not yet available. The lab arrives in Milestone 3:
+Requirements: Docker with Compose v2, Python 3.12 and [uv](https://docs.astral.sh/uv/).
 
 ```sh
-docker compose up        # 3 nodes + settlement + MCP
-make test                # unit tests, then end-to-end lab assertions
+make check        # ruff, mypy --strict
+make unit         # unit + integration tests (starts a throwaway Postgres)
+make lab-up       # build images, start 3 operators (4 Kamailio instances)
+make lab-e2e      # drive SIPp scenarios, assert receipts, proofs, disputes
+make lab-down
+make test         # all of the above, on a fresh lab
 ```
+
+Behind a TLS-intercepting proxy, set `EXTRA_CA=/path/to/ca-bundle.pem` for image builds.
 
 ## License
 

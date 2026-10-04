@@ -30,7 +30,44 @@ jobs:
         with:
           version: "0.8.17"
       - run: uv sync --frozen
-      - run: uv run ruff check services
-      - run: uv run ruff format --check services
-      - run: uv run mypy services/common/src services/receipts/src
-      - run: uv run pytest -q services
+      - run: uv run ruff check services lab
+      - run: uv run ruff format --check services lab
+      - run: uv run mypy services/common/src services/receipts/src lab/src
+      - run: uv run pytest -q
+
+  lab:
+    name: Lab end to end (3 operators, Kamailio + rtpengine + SIPp)
+    runs-on: ubuntu-latest
+    needs: python
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: docker compose --profile test build
+      - name: Start lab
+        run: docker compose up -d --wait
+      - name: End-to-end scenarios
+        run: python3 lab/run_e2e.py
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 300
+      - name: Tear down
+        if: always()
+        run: docker compose --profile test down -v
+
+  kamailio61:
+    name: Kamailio 6.1 packages (deb.kamailio.org) smoke test
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build node image from kamailio61
+        run: >
+          docker build -f node/kamailio/Dockerfile
+          --build-arg BASE_IMAGE=ubuntu:24.04 --build-arg KAMAILIO_REPO=kamailio61
+          -t dots-kamailio:61 .
+      - name: Modules present
+        run: >
+          docker run --rm --entrypoint sh dots-kamailio:61 -c
+          'kamailio -v | head -1; for m in secsipid dmq dmq_usrloc http_async_client rtpengine tls jansson xhttp;
+          do test -f /usr/lib/x86_64-linux-gnu/kamailio/modules/$m.so || { echo missing $m; exit 1; }; done'
