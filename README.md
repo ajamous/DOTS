@@ -55,4 +55,4 @@ make test                # unit tests, then end-to-end lab assertions
 
 ## License
 
-To be decided (see the open questions in [`docs/PLAN.md`](docs/PLAN.md)).
+Apache License 2.0. See [`LICENSE`](LICENSE).

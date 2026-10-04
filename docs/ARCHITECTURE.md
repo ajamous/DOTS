@@ -1,6 +1,6 @@
 # DOTS 2.0 Architecture (Phase 1)
 
-Status: **draft for review** (Milestone 1). Items marked **[Decision]** need AJ's sign-off; the list is collected in [`PLAN.md`](PLAN.md).
+Status: **accepted** (Milestone 1; decisions in [`PLAN.md`](PLAN.md#decisions-log)). Items marked **[Decision]** need AJ's sign-off; the list is collected in [`PLAN.md`](PLAN.md).
 
 ## 1. Scope and trust model
 
@@ -430,14 +430,14 @@ Only `final` statements with `net.amount > 0` are paid. Payouts are idempotent o
 
 | Concern | Choice |
 |---|---|
-| Kamailio | **6.1.4** (latest stable, released 2026-08-20). Built as a thin Debian bookworm image from the official `deb.kamailio.org/kamailio61` repository, because that is where `kamailio-secsipid-modules` is packaged. The official `ghcr.io/kamailio/kamailio-ci:6.1.4-alpine` image is the fallback if it turns out to include `secsipid`, which is not verified. Note that the moving `6`/`6-alpine` tags on ghcr currently resolve to 6.0.8, so pin exact tags. Docker Hub `kamailio/kamailio-ci` stops at 5.5.2 and must not be used |
+| Kamailio | **6.0.5** from the Ubuntu 26.04 LTS archive (`kamailio`, `kamailio-tls-modules`, `kamailio-postgres-modules`, `kamailio-secsipid-modules`, `kamailio-json-modules`, `kamailio-extra-modules`, `kamailio-utils-modules`). Upstream latest stable is 6.1.4; the Dockerfile builds from `deb.kamailio.org/kamailio61` with `--build-arg KAMAILIO_REPO=kamailio61`. See decision D9 in PLAN.md. Do not use the Docker Hub `kamailio/kamailio-ci` images: they stop at 5.5.2 |
 | Config | `node/kamailio/kamailio.cfg.tmpl` + `node.env`, rendered at container start (envsubst-style, or Kamailio's `#!substdef` / `#!define` with `-A` flags; preference is native defines to avoid a template engine) |
 | Peering | `tls` module, `verify_certificate=yes`, `require_certificate=yes`, lab CA. The peer's certificate SHA-256 must match the peer registry (`tls_cert_sha256`); checked in the routing script against `$tls_peer_*` before a peer-originated INVITE is accepted |
 | Registrar replication | `dmq` + `dmq_usrloc` (see §8.1); 6.x added `dmq` failure-tracking params (`fail_count_*`, `remove_inactive`) and `dmq_usrloc` `replicate_cflags` / `usrloc_delete_expired`, which the config sets explicitly |
 | STIR/SHAKEN | `secsipid` (+ `secsipid_proc`), shipped and maintained in 6.1, backed by libsecsipid ([asipto/secsipidx](https://github.com/asipto/secsipidx)). On the originating side `secsipid_sign_identity()` runs with the node's STI key and an `x5u` URL; the terminating side runs `secsipid_check_identity()` against a lab STI-CA trust store. The alternative `stirshaken` module (libstirshaken) is also in 6.1 but is not in the 6.1 Debian packages, so it is not used. In production SHAKEN certificates must chain to an STI-PA-approved CA; the lab CA only exercises the mechanics |
 | Dialog state / timing | `dialog` module: dialog start, answer and end timestamps drive the call-end event |
 | Durable CDRs | `acc` with `cdr_enable` into local Postgres (`db_postgres`); the backstop for lost events |
-| Media | rtpengine (Sipwise **mr26.2.1.2**, 2026-09-16; Sipwise publishes no official container image, so the lab builds a pinned image from Sipwise's packages or from the release tag at image-build time — decided in Milestone 3, never vendored) via the `rtpengine` module (§8.2) |
+| Media | rtpengine (**mr13.5.1.4** from the Ubuntu 26.04 archive, userspace forwarding; Sipwise publishes no official container image) via the `rtpengine` module (§8.2) |
 | Call-end event | `http_async_client` (§8.3) |
 
 ### 8.1 What DMQ replicates (a correction to the brief)
@@ -539,8 +539,8 @@ lab/             docker-compose.yml (root), bootstrap/, sipp/, tests/ (e2e)
 
 | Component | Version | Notes |
 |---|---|---|
-| Kamailio | 6.1.4 | `deb.kamailio.org/kamailio61`; modules used: tls, dmq, dmq_usrloc, htable (dmq), dialog, acc, db_postgres, secsipid, rtpengine, http_async_client, jansson |
-| rtpengine | mr26.2.1.2 | Sipwise naming moved from mr13/mr14 to year-style mr26.x |
+| Kamailio | 6.0.5 (Ubuntu 26.04), 6.1.4 optional | modules used: tls, dmq, dmq_usrloc, htable (dmq), dialog, acc, db_postgres, secsipid, rtpengine, http_async_client, jansson |
+| rtpengine | mr13.5.1.4 (Ubuntu 26.04 `rtpengine-daemon`) | upstream latest is mr26.2.1.2; mr13.5 is a maintained LTS line (mr13.5.1.27, 2026-09) |
 | Python | 3.12 | per brief |
 | fastapi | 0.142.x | |
 | pydantic | 2.13.x | |

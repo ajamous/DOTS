@@ -10,7 +10,7 @@ Branch per milestone, one PR per milestone. Each PR leaves `main`/`master` green
 - [x] `CLAUDE.md` project brief.
 - [x] `docs/ARCHITECTURE.md`: diagrams, receipt, log and settlement data model, and Kamailio design choices.
 - [x] `.gitignore` covering keys, certs and `.env`.
-- [ ] **AJ review of the architecture, and the decisions below.**
+- [x] Decisions recorded (see Decisions log); `LICENSE` (Apache-2.0) and `NOTICE` added.
 
 ## Milestone 2: Receipt service (no SIP yet)
 
@@ -84,6 +84,17 @@ Raised by the design:
 
 ## Decisions log
 
-| Date | Decision | By |
+AJ delegated all open questions on 2026-10-04 ("decide for me"). The decisions below were made on that basis and can be revisited.
+
+| # | Date | Decision |
 |---|---|---|
-| | | |
+| D1 | 2026-10-04 | **License: Apache-2.0.** Carriers and voice-agent vendors can embed it, and it carries an explicit patent grant. `LICENSE` + `NOTICE` added. |
+| D2 | 2026-10-04 | **Settlement:** daily UTC periods, 6 h grace, `tol_abs = 2 s`, `tol_rel = 1%`, `tol_skew = 2 s`, dispute window and dest-hash key retention 30 days after period end. |
+| D3 | 2026-10-04 | **Testnet: Base Sepolia** (chain id 84532), Circle testnet USDC. CI and the lab use a local EVM; the public testnet is a manual target only. |
+| D4 | 2026-10-04 | **Repo stays at `ajamous/dots`.** Moving to the TCXC org is a one-click transfer later, and GitHub redirects the old URL. |
+| D5 | 2026-10-04 | **Corrections 1–9 accepted.** |
+| D6 | 2026-10-04 | **`agreed_billed_seconds = min(orig, term)`.** |
+| D7 | 2026-10-04 | **Lab includes `node-a2`** (a second instance of operator A) to demonstrate `dmq_usrloc`. |
+| D8 | 2026-10-04 | **Default branch stays `master`.** A rename breaks existing clones and links, for no functional gain. |
+| D9 | 2026-10-04 | **Images are built on Ubuntu 26.04 LTS from the Ubuntu archive: Kamailio 6.0.5 (with `kamailio-secsipid-modules`), rtpengine mr13.5.1.4, SIPp 3.7.7.** This deviates from "latest 6.x" (6.1.4). Reasons: distro-maintained LTS security updates, and `deb.kamailio.org` was unreachable from the build environment. The routing config sticks to features common to 6.0 and 6.1. The Kamailio Dockerfile takes `KAMAILIO_REPO=kamailio61` to build from `deb.kamailio.org` instead, so moving up is a build arg. |
+| D10 | 2026-10-04 | **Language:** Python 3.12 for all services, per the brief. Kamailio and rtpengine stay as the SIP and media layer. |
