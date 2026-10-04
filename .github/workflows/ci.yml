@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Lint, type check, unit tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: dots
+          POSTGRES_PASSWORD: dots
+        ports: ["54329:5432"]
+        options: >-
+          --health-cmd "pg_isready -U dots" --health-interval 2s --health-timeout 2s
+          --health-retries 30
+    env:
+      DOTS_TEST_PG_DSN: postgresql://dots:dots@localhost:54329/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.17"
+      - run: uv sync --frozen
+      - run: uv run ruff check services
+      - run: uv run ruff format --check services
+      - run: uv run mypy services/common/src services/receipts/src
+      - run: uv run pytest -q services
