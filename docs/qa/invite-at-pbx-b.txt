@@ -1,0 +1,31 @@
+16:42:13.084634 IP dots-node-b1-1.dots_sip.5060 > a96f5e392768.5060: SIP: INVITE sip:pbx@172.30.0.82:5060 SIP/2.0
+Record-Route: <sip:172.30.0.21;r2=on;lr=on;ftag=7DOTS1;did=7b4.e131>
+Record-Route: <sip:172.30.0.21:5061;transport=tls;r2=on;lr=on;ftag=7DOTS1;did=7b4.e131>
+Record-Route: <sip:172.30.0.11:5061;transport=tls;r2=on;lr=on;ftag=7DOTS1;did=7b4.6d3>
+Record-Route: <sip:172.30.0.11;r2=on;lr=on;ftag=7DOTS1;did=7b4.6d3>
+Via: SIP/2.0/UDP 172.30.0.21;branch=z9hG4bKee41.cfff1578870fe1ffb58fe1051efbb9bc.0;i=5
+Via: SIP/2.0/TLS 172.30.0.11:5061;branch=z9hG4bKee41.85fe3e17db499fc3d3b333931ceeff4d.0
+Via: SIP/2.0/UDP 172.30.0.65:5090;branch=z9hG4bK-7-1-0
+From: <sip:+447911000001@172.30.0.65>;tag=7DOTS1
+To: <sip:+442079460000@172.30.0.11:5060>
+Call-ID: 1-7@172.30.0.65
+CSeq: 1 INVITE
+Contact: <sip:447911000001@172.30.0.65:5090>
+Max-Forwards: 68
+Content-Type: application/sdp
+Content-Length:   156
+Identity: eyJhbGciOiJFUzI1NiIsInBwdCI6InNoYWtlbiIsInR5cCI6InBhc3Nwb3J0IiwieDV1IjoiaHR0cDovL25vZGUtYTo4MDg4L3N0aXIvY2VydC5wZW0ifQ.eyJhdHRlc3QiOiJBIiwiZGVzdCI6eyJ0biI6WyI0NDIwNzk0NjAwMDAiXX0sImlhdCI6MTc5MTEzMjEzMiwib3JpZyI6eyJ0biI6IjQ0NzkxMTAwMDAwMSJ9LCJvcmlnaWQiOiI5MTgwNGZlYy1hMzcyLTRmYzAtODEzNS1mZmVmZDhkOWQwZWMifQ.FmlBqhJJxFDZVQcAxP-VdcLHX0U1tzC_hlj9-Fpkm7KYPNEcpcX538bsKWrAvFL7zPVdD6sMi4vmyrk5z_GXgw;info=<http://node-a:8088/stir/cert.pem>;alg=ES256;ppt=shaken
+
+v=0
+o=- 53655765 2353687637 IN IP4 172.30.0.23
+s=-
+t=0 0
+m=audio 30796 RTP/AVP 8
+c=IN IP4 172.30.0.23
+a=rtpmap:8 PCMA/8000
+a=sendrecv
+a=rtcp:30797
+
+1 packet captured
+2 packets received by filter
+0 packets dropped by kernel
