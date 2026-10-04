@@ -365,6 +365,8 @@ class Peer(Strict):
     stir_x5u: str | None = None
     signing_keys: list[PeerKey]
     agreement_key: B64 | None = None
+    # E.164 ranges this node terminates (static operator data, ARCHITECTURE.md §8.1)
+    ranges: list[Prefix] = Field(default_factory=list)
 
 
 class PeerRegistry(Strict):

@@ -10,7 +10,7 @@ dependencies = []
 package = false
 
 [tool.uv.workspace]
-members = ["services/common", "services/receipts"]
+members = ["services/common", "services/receipts", "lab"]
 
 [dependency-groups]
 dev = [
@@ -22,11 +22,13 @@ dev = [
   "httpx>=0.28",
   "dots-common",
   "dots-receipts",
+  "dots-lab",
 ]
 
 [tool.uv.sources]
 dots-common = { workspace = true }
 dots-receipts = { workspace = true }
+dots-lab = { workspace = true }
 
 [tool.ruff]
 line-length = 100
@@ -38,15 +40,16 @@ ignore = ["S101", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S", "PT011", "PT018"]
+"lab/run_e2e.py" = ["S603", "S607"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["dots_common", "dots_receipts", "dots_settlement", "dots_mcp"]
+known-first-party = ["dots_common", "dots_receipts", "dots_settlement", "dots_mcp", "dots_lab"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-mypy_path = ["services/common/src", "services/receipts/src"]
+mypy_path = ["services/common/src", "services/receipts/src", "lab/src"]
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
@@ -58,5 +61,5 @@ addopts = "--import-mode=importlib"
 pythonpath = ["services/common/tests", "services/receipts/tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-testpaths = ["services"]
+testpaths = ["services", "lab/unit"]
 markers = ["pg: requires Postgres (DOTS_TEST_PG_DSN)"]

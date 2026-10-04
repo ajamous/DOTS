@@ -5,6 +5,7 @@ requires-python = "==3.12.*"
 [manifest]
 members = [
     "dots-common",
+    "dots-lab",
     "dots-receipts",
     "dots-workspace",
 ]
@@ -202,6 +203,21 @@ requires-dist = [
 ]
 
 [[package]]
+name = "dots-lab"
+version = "0.1.0"
+source = { editable = "lab" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "dots-common" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", specifier = ">=44" },
+    { name = "dots-common", editable = "services/common" },
+]
+
+[[package]]
 name = "dots-receipts"
 version = "0.1.0"
 source = { editable = "services/receipts" }
@@ -234,6 +250,7 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "dots-common" },
+    { name = "dots-lab" },
     { name = "dots-receipts" },
     { name = "httpx" },
     { name = "hypothesis" },
@@ -248,6 +265,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "dots-common", editable = "services/common" },
+    { name = "dots-lab", editable = "lab" },
     { name = "dots-receipts", editable = "services/receipts" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "hypothesis", specifier = ">=6.120" },

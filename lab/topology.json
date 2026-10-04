@@ -1,0 +1,19 @@
+{
+  "comment": "Lab topology. Each node is one operator. node-a runs two Kamailio instances (a1, a2) sharing one identity to demonstrate dmq_usrloc.",
+  "currency": "USD",
+  "nodes": {
+    "node-a": {"operator": "Operator A (lab)", "instances": ["node-a1", "node-a2"], "ranges": ["4479"]},
+    "node-b": {"operator": "Operator B (lab)", "instances": ["node-b1"], "ranges": ["4477", "4420"]},
+    "node-c": {"operator": "Operator C (lab)", "instances": ["node-c1"], "ranges": ["1"]}
+  },
+  "rates": [
+    {"payer": "node-a", "payee": "node-b", "prefix": "4477", "rate_per_min": "0.0300", "interval_1": 6, "interval_n": 6},
+    {"payer": "node-a", "payee": "node-b", "prefix": "447700", "rate_per_min": "0.0420", "interval_1": 1, "interval_n": 1},
+    {"payer": "node-a", "payee": "node-b", "prefix": "4420", "rate_per_min": "0.0090", "interval_1": 60, "interval_n": 60},
+    {"payer": "node-b", "payee": "node-a", "prefix": "4479", "rate_per_min": "0.0280", "interval_1": 6, "interval_n": 6},
+    {"payer": "node-b", "payee": "node-c", "prefix": "1", "rate_per_min": "0.0060", "interval_1": 6, "interval_n": 6},
+    {"payer": "node-c", "payee": "node-b", "prefix": "4477", "rate_per_min": "0.0310", "interval_1": 6, "interval_n": 6},
+    {"payer": "node-c", "payee": "node-a", "prefix": "4479", "rate_per_min": "0.0290", "interval_1": 6, "interval_n": 6},
+    {"payer": "node-a", "payee": "node-c", "prefix": "1", "rate_per_min": "0.0055", "interval_1": 6, "interval_n": 6}
+  ]
+}
