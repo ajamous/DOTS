@@ -26,7 +26,7 @@ Branch per milestone, one PR per milestone. Each PR leaves `main`/`master` green
    - An in-process two-node test, with two apps and two Postgres instances via testcontainers or a compose profile, covering: happy path, each dispute kind, replay, a wrong mTLS identity, and log tampering detected by the peer monitor.
 5. `pyproject.toml` (uv workspace), ruff, mypy `--strict`, `.env.example`.
 
-## Milestone 3: Kamailio nodes and the 3-node lab
+## Milestone 3: Kamailio nodes and the 3-node lab — done
 
 1. Kamailio 6.1.4 image: Debian bookworm with the `kamailio61` repo, including `kamailio-secsipid-modules`. Verify that secsipid loads first; it determines the image choice.
 2. `node/kamailio/` config, rendered per node: TLS peering with fingerprint check, registrar, `dmq_usrloc` inside node-a's cluster, DMQ `htable` reachability index across operators, `dialog`, `acc` to Postgres, `secsipid` sign/verify, `rtpengine`, `http_async_client` call-end events.
@@ -51,6 +51,16 @@ Branch per milestone, one PR per milestone. Each PR leaves `main`/`master` green
 
 1. `services/mcp` on `mcp` 2.3.0 (`MCPServer`) with read-only tools: `list_peers`, `get_receipt`, `verify_inclusion`, `get_settlement`, `list_disputes`.
 2. GitHub Actions: ruff, mypy, pytest, then the lab job (compose up, `make test`, compose down) on `ubuntu-latest`. Kamailio and rtpengine images are built in CI with layer caching.
+
+## Follow-up work (known gaps, not in Phase 1)
+
+| Gap | Why it matters | Plan |
+|---|---|---|
+| `acc` CDR backstop and reconciler | A call-end event lost while the receipt service is down is not recovered (disputes make the loss visible) | `acc` `cdrs_table` in a separate database; reconcile every 60 s |
+| SRTP passthrough verification | The lab uses plain RTP; `media.e2e` is always false | SRTP-capable test agent; pin rtpengine flags |
+| Signed peer registry | `peers.json` is distributed by the lab bootstrap, not signed per operator | Each operator signs its own entry; registry = set of signed entries |
+| mTLS identity binding in the receipt service | Authorization uses request signatures; the client certificate is only a transport gate | Expose the peer certificate to the app (proxy header or ASGI TLS extension) and bind it to `node_id` |
+| Transit (A→B→C) | Phase 1 refuses numbers outside the terminating node's own ranges | Per-hop receipts chained by a shared reference |
 
 ## Corrections to the brief (proposed; details in ARCHITECTURE.md)
 

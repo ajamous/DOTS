@@ -1,0 +1,18 @@
+{
+  "comment": "SIPp call mixes for the lab. Durations avoid whole seconds so ceil() is stable under jitter: 7400 ms bills 8 s, 10400 ms bills 11 s. Each (orig, term, prefix) is used by exactly one scenario so results can be attributed without call ids.",
+  "groups": {
+    "normal": [
+      {"name": "a-b-mobile", "uac": "uac-a", "target": "node-a1", "dial": "447700900123", "caller": "442071230001", "calls": 10, "rate": 2, "duration_ms": 7400, "orig": "node-a", "term": "node-b", "prefix": "447700", "expect": "receipt", "billed": 8},
+      {"name": "a-b-london", "uac": "uac-a", "target": "node-a1", "dial": "442079460000", "caller": "447911000001", "calls": 5, "rate": 2, "duration_ms": 10400, "orig": "node-a", "term": "node-b", "prefix": "4420", "expect": "receipt", "billed": 11},
+      {"name": "b-c", "uac": "uac-b", "target": "node-b1", "dial": "14155550123", "caller": "447700900500", "calls": 8, "rate": 2, "duration_ms": 10400, "orig": "node-b", "term": "node-c", "prefix": "1", "expect": "receipt", "billed": 11},
+      {"name": "c-a", "uac": "uac-c", "target": "node-c1", "dial": "447911123456", "caller": "14155550100", "calls": 6, "rate": 2, "duration_ms": 10400, "orig": "node-c", "term": "node-a", "prefix": "4479", "expect": "receipt", "billed": 11},
+      {"name": "b-a", "uac": "uac-b", "target": "node-b1", "dial": "447911654321", "caller": "447700900501", "calls": 4, "rate": 2, "duration_ms": 10400, "orig": "node-b", "term": "node-a", "prefix": "4479", "expect": "receipt", "billed": 11}
+    ],
+    "short_burst": [
+      {"name": "a-b-burst", "uac": "uac-a", "target": "node-a1", "dial": "447712345678", "caller": "442071230002", "calls": 40, "rate": 10, "duration_ms": 2400, "orig": "node-a", "term": "node-b", "prefix": "4477", "expect": "receipt", "billed": 3, "fraud": "hold"}
+    ],
+    "duration_mismatch": [
+      {"name": "a-c-skew", "uac": "uac-a", "target": "node-a1", "dial": "14155550199", "caller": "442071230003", "calls": 5, "rate": 2, "duration_ms": 10400, "orig": "node-a", "term": "node-c", "prefix": "1", "expect": "dispute", "kind": "duration_mismatch"}
+    ]
+  }
+}

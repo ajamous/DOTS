@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,7 +12,8 @@ class Settings(BaseSettings):
     key_dir: Path
     peers_file: Path
     rate_tables_dir: Path
-    internal_token: str
+    internal_token: str = ""
+    internal_token_file: Path | None = None
 
     # Tolerances (decision D2)
     tol_abs_seconds: int = 2
@@ -44,3 +46,11 @@ class Settings(BaseSettings):
     # duration for calls originated by node-a. Ignored unless lab_mode is set.
     lab_mode: bool = False
     lab_skew: str = ""
+
+    @model_validator(mode="after")
+    def _token(self) -> "Settings":
+        if not self.internal_token and self.internal_token_file is not None:
+            self.internal_token = self.internal_token_file.read_text().strip()
+        if not self.internal_token:
+            raise ValueError("DOTS_INTERNAL_TOKEN or DOTS_INTERNAL_TOKEN_FILE is required")
+        return self

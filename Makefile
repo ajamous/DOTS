@@ -12,17 +12,17 @@ EXTRA_CA ?=
 BUILD_SECRET := $(if $(EXTRA_CA),--secret id=extra_ca$(comma)src=$(EXTRA_CA),)
 comma := ,
 
-.PHONY: sync check lint typecheck unit pg-up pg-down images test clean
+.PHONY: sync check lint typecheck unit pg-up pg-down images lab-build lab-up lab-e2e lab-down test clean
 
 sync:
 	uv sync --frozen
 
 lint:
-	uv run ruff check services
-	uv run ruff format --check services
+	uv run ruff check services lab
+	uv run ruff format --check services lab
 
 typecheck:
-	uv run mypy services/common/src services/receipts/src
+	uv run mypy services/common/src services/receipts/src lab/src
 
 check: lint typecheck
 
@@ -37,9 +37,28 @@ pg-down:
 	-docker rm -f $(PG_CONTAINER) >/dev/null 2>&1
 
 unit: pg-up
-	uv run pytest -q services
+	uv run pytest -q
 
 images:
 	docker build $(BUILD_SECRET) -f services/Dockerfile -t dots-services:dev .
 
+# ---------------------------------------------------------------- lab
+export EXTRA_CA
+
+lab-build:
+	docker compose --profile test build
+
+lab-up: lab-build
+	docker compose up -d --wait
+
+lab-e2e:
+	python3 lab/run_e2e.py
+
+lab-down:
+	docker compose --profile test down -v
+
+# unit tests, then a fresh lab end to end
 test: unit
+	$(MAKE) lab-down
+	$(MAKE) lab-up
+	$(MAKE) lab-e2e
