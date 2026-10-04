@@ -125,6 +125,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--groups", default="normal,short_burst,duration_mismatch,outage")
     ap.add_argument("--skip-calls", action="store_true", help="only run the assertions")
+    ap.add_argument("--verbose", action="store_true", help="list every assertion")
     args = ap.parse_args()
     scenarios = json.loads((ROOT / "lab/scenarios.json").read_text())["groups"]
     groups = [g for g in args.groups.split(",") if g]
@@ -146,7 +147,7 @@ def main() -> None:
         f"DOTS_E2E_GROUPS={','.join(groups)}",
         "tester",
         "pytest",
-        "-q",
+        "-v" if args.verbose else "-q",
         "-p",
         "no:cacheprovider",
         "lab/tests",

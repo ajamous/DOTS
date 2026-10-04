@@ -7,7 +7,11 @@ Independent operators (carriers, PBX owners, voice-agent platforms) run a DOTS n
 The ledger proves *what was exchanged and agreed*. It does not route calls, hold presence, or mint anything. There is no token.
 
 > **Status:** Phase 1 complete. The 3-operator lab runs end to end: SIP calls through Kamailio with STIR/SHAKEN, dual-signed receipts in RFC 9162 logs, fraud-gated settlement countersigned by both peers, payouts (fiat invoice, testnet USDC), and a read-only MCP server for agents. Known gaps are listed in [`docs/PLAN.md`](docs/PLAN.md#follow-up-work-known-gaps-not-in-phase-1).
-> See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design and [`docs/PLAN.md`](docs/PLAN.md) for the build plan.
+> See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design, [`docs/PLAN.md`](docs/PLAN.md) for the build plan and [`docs/QA.md`](docs/QA.md) for test evidence.
+
+<p align="center">
+  <img src="docs/images/qa-e2e.png" alt="End-to-end lab run: 81 SIP calls across 3 operators, 18 assertions passing" width="900">
+</p>
 
 ## What a node is
 
@@ -61,6 +65,27 @@ docs/                 Architecture, plan, 2018 paper
 | Agents | MCP tools `list_peers`, `get_receipt`, `verify_inclusion`, `get_settlement`, `list_disputes` |
 
 Upstream projects (Kamailio, rtpengine, SIPp, Postgres) are consumed as packages or container images, never vendored.
+
+## Evidence from the lab
+
+Captured during an end-to-end run. Raw logs and data are in [`docs/qa/`](docs/qa/); the walkthrough is in [`docs/QA.md`](docs/QA.md).
+
+**STIR/SHAKEN across the federation.** A live INVITE at operator B's PBX after the mutual-TLS hop from operator A: node-a's PASSporT, verified by node-b, recorded in a receipt that carries only the rate prefix.
+
+![SIP INVITE with Identity header and decoded PASSporT](docs/images/qa-sip-identity.png)
+
+**A receipt in two logs.** Signed by both operators, byte-identical in both logs, with RFC 9162 inclusion proofs recomputed independently.
+
+![Dual-signed receipt and inclusion proofs](docs/images/qa-receipt.png)
+
+<table>
+<tr>
+<td width="50%"><b>Settlement statement</b>, countersigned by both peers. 40 burst calls held by the fraud gate.<br><img src="docs/images/qa-statement.png" alt="Settlement statement"></td>
+<td width="50%"><b>Agents over MCP</b>, read-only tools, every badge verified locally.<br><img src="docs/images/qa-mcp.png" alt="MCP tools"></td>
+</tr>
+</table>
+
+![Static checks, tests and CI](docs/images/qa-checks.png)
 
 ## Quick start
 

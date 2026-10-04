@@ -1,0 +1,789 @@
+{
+ "receipt": {
+  "index": 0,
+  "entry": {
+   "receipt": {
+    "v": 1,
+    "type": "receipt",
+    "proposal": {
+     "v": 1,
+     "type": "proposal",
+     "end_ts": 1791132140512,
+     "period": "2026-10-04",
+     "call_id": "1-16@172.30.0.65",
+     "rate_id": "node-a>node-b:447700",
+     "from_tag": "16DOTS1",
+     "start_ts": 1791132132998,
+     "answer_ts": 1791132133103,
+     "dest_hash": "-6gI-52Uadu5i_-vVXvBli18xOghdgpGnL2pkdhgGwM",
+     "orig_node": "node-a",
+     "term_node": "node-b",
+     "rate_table": "ZGxHMhBrZFeSIgzxDbT8zV33MseQ9Gw_U9sC-c7eVLg",
+     "attestation": "A",
+     "dest_prefix": "447700",
+     "orig_key_id": "7b69736dc59bac6eb3a453c82e264abadfd9b4c3e2a8fcc79a080b2d02c05d3f",
+     "orig_billed_seconds": 8
+    },
+    "sig_orig": "NqjfBmpXMH4FxyCwITGboQxH5v6Eeu6YJIl9lvMph9CanZR-fkooXX_afTDVXAZ4VFrJ8rn-FLVYdXpF-b2vAg",
+    "term_end_ts": 1791132140515,
+    "term_key_id": "c12b1aff690a736f23f46e37fa820b6a158b72fb6015d0627af4063c9dbf1d0b",
+    "term_answer_ts": 1791132133099,
+    "term_billed_seconds": 8,
+    "agreed_billed_seconds": 8,
+    "term_attestation_verified": "A"
+   },
+   "sig_term": "HI-PvThZs3msrdpqVtvAbaeZ0bhig-fkEujVjQNBjuL3KUtYg-PkmY1gpK5vQ7scEMazlABzsbBbLPt4NiCTAA"
+  }
+ },
+ "sths": {
+  "node-a": {
+   "sth": {
+    "v": 1,
+    "type": "sth",
+    "log_id": "node-a",
+    "tree_size": 70,
+    "root_hash": "LieMdWGb7VJNyHMBKE7JkI1A-mxGixkm3xcVAXeqyEs",
+    "timestamp": 1791132173578,
+    "key_id": "7b69736dc59bac6eb3a453c82e264abadfd9b4c3e2a8fcc79a080b2d02c05d3f"
+   },
+   "sig": "iVamPp7LXzxJhhknjhKBU6_kHGPJtGSs3fT6J2tf1sMlE70znP7vRMZFK8TBD8jEvG2PxBIEgzAuGxMqt2KNAA"
+  },
+  "node-b": {
+   "sth": {
+    "v": 1,
+    "type": "sth",
+    "log_id": "node-b",
+    "tree_size": 70,
+    "root_hash": "hvg7rp4bqYb4Wggre5r42g1i2C4SakDuNDsS7rK8eUc",
+    "timestamp": 1791132226839,
+    "key_id": "c12b1aff690a736f23f46e37fa820b6a158b72fb6015d0627af4063c9dbf1d0b"
+   },
+   "sig": "j-hmbFhrzGtNhvbT7Y2ZTJQNlU7AhDfXvl2d2iDSaWQOg35mp0ghK8meqCgwcJDoE0_UUBi6e737cXc2iJEoBg"
+  },
+  "node-c": {
+   "sth": {
+    "v": 1,
+    "type": "sth",
+    "log_id": "node-c",
+    "tree_size": 22,
+    "root_hash": "C1mRgkOGx5Jzj02MaJZG0pVLmKsRzkLtC7-9v6CBokI",
+    "timestamp": 1791132236084,
+    "key_id": "ae6469ccc72390f61d25d445d40d8c057c7adbfe09b8a8093fbd4fa1eb51bc32"
+   },
+   "sig": "O4z-PB3gIa64--qK6ODKYz-gkKq841QsHSJzc4fsJOHV-iWF4nJNxiBcqxIqoBBYiG5Llco47RkUnCcrEuQoDA"
+  }
+ },
+ "alarms": {
+  "node-a": {
+   "alarms": [],
+   "frozen": []
+  },
+  "node-b": {
+   "alarms": [],
+   "frozen": []
+  },
+  "node-c": {
+   "alarms": [],
+   "frozen": []
+  }
+ },
+ "statements": {
+  "statements": [
+   {
+    "id": "s2EnnbMrhfszLwpFTHE8w5_a1gaqKdTmtWNYAwk6qag",
+    "pair": [
+     "node-b",
+     "node-c"
+    ],
+    "period": "2026-10-04",
+    "generated_ts": 1791132274335,
+    "final": true
+   },
+   {
+    "id": "anNWIR_S47TDinQR4A4DSLvpaa78VM9l0NB0NjUwzqk",
+    "pair": [
+     "node-a",
+     "node-c"
+    ],
+    "period": "2026-10-04",
+    "generated_ts": 1791132274212,
+    "final": true
+   },
+   {
+    "id": "zYJvgaCX8hCQdCrDnBWCdfzWk4CPk-Bcj3kuxNmL58Y",
+    "pair": [
+     "node-a",
+     "node-b"
+    ],
+    "period": "2026-10-04",
+    "generated_ts": 1791132274052,
+    "final": true
+   }
+  ]
+ },
+ "mcp": {
+  "tools": [
+   [
+    "list_peers",
+    true
+   ],
+   [
+    "get_receipt",
+    true
+   ],
+   [
+    "verify_inclusion",
+    true
+   ],
+   [
+    "get_settlement",
+    true
+   ],
+   [
+    "list_disputes",
+    true
+   ]
+  ],
+  "list_peers": {
+   "peers": [
+    {
+     "node_id": "node-a",
+     "role": "node",
+     "operator": "Operator A (lab)",
+     "ranges": [
+      "4479"
+     ],
+     "log": {
+      "tree_size": 70,
+      "root_hash": "LieMdWGb7VJNyHMBKE7JkI1A-mxGixkm3xcVAXeqyEs",
+      "timestamp": 1791132173578,
+      "signature_verified": true
+     },
+     "alarms": 0,
+     "frozen_peers": []
+    },
+    {
+     "node_id": "node-b",
+     "role": "node",
+     "operator": "Operator B (lab)",
+     "ranges": [
+      "4477",
+      "4420"
+     ],
+     "log": {
+      "tree_size": 70,
+      "root_hash": "hvg7rp4bqYb4Wggre5r42g1i2C4SakDuNDsS7rK8eUc",
+      "timestamp": 1791132226839,
+      "signature_verified": true
+     },
+     "alarms": 0,
+     "frozen_peers": []
+    },
+    {
+     "node_id": "node-c",
+     "role": "node",
+     "operator": "Operator C (lab)",
+     "ranges": [
+      "1"
+     ],
+     "log": {
+      "tree_size": 22,
+      "root_hash": "C1mRgkOGx5Jzj02MaJZG0pVLmKsRzkLtC7-9v6CBokI",
+      "timestamp": 1791132236084,
+      "signature_verified": true
+     },
+     "alarms": 0,
+     "frozen_peers": []
+    },
+    {
+     "node_id": "settlement",
+     "role": "settlement",
+     "operator": "DOTS lab"
+    },
+    {
+     "node_id": "observer",
+     "role": "observer",
+     "operator": "DOTS lab"
+    }
+   ]
+  },
+  "get_receipt": {
+   "call_key": "RBnFtoKe4sSfN_qZIy6ZrQ-WSS2yVsM4BwYKB5wHveY",
+   "outcome": "receipt",
+   "leaf_hash": "Z5DKS7J8RFwSbuloRrxk-P0nX8zueP7d0SO-2bENbK0",
+   "leaf_index": 0,
+   "receipt": {
+    "call_id": "1-16@172.30.0.65",
+    "orig_node": "node-a",
+    "term_node": "node-b",
+    "period": "2026-10-04",
+    "start_ts": 1791132132998,
+    "answer_ts": 1791132133103,
+    "end_ts": 1791132140512,
+    "orig_billed_seconds": 8,
+    "term_billed_seconds": 8,
+    "agreed_billed_seconds": 8,
+    "dest_prefix": "447700",
+    "rate_id": "node-a>node-b:447700",
+    "attestation_claimed": "A",
+    "attestation_verified_by_term": "A"
+   },
+   "signatures_verified": true,
+   "verification_errors": []
+  },
+  "verify_inclusion": {
+   "call_key": "RBnFtoKe4sSfN_qZIy6ZrQ-WSS2yVsM4BwYKB5wHveY",
+   "leaf_hash": "Z5DKS7J8RFwSbuloRrxk-P0nX8zueP7d0SO-2bENbK0",
+   "verified_in_all": true,
+   "results": [
+    {
+     "log": "node-a",
+     "included": true,
+     "verified": true,
+     "leaf_index": 0,
+     "tree_size": 70,
+     "root_hash": "LieMdWGb7VJNyHMBKE7JkI1A-mxGixkm3xcVAXeqyEs",
+     "sth_timestamp": 1791132173578,
+     "proof_length": 7
+    },
+    {
+     "log": "node-b",
+     "included": true,
+     "verified": true,
+     "leaf_index": 0,
+     "tree_size": 70,
+     "root_hash": "hvg7rp4bqYb4Wggre5r42g1i2C4SakDuNDsS7rK8eUc",
+     "sth_timestamp": 1791132226839,
+     "proof_length": 7
+    }
+   ]
+  },
+  "list_disputes": {
+   "node_id": "node-c",
+   "count": 5,
+   "disputes": [
+    {
+     "leaf_index": 14,
+     "kind": "duration_mismatch",
+     "call_id": "1-89@172.30.0.65",
+     "orig_node": "node-a",
+     "term_node": "node-c",
+     "raised_by": "node-c",
+     "period": "2026-10-04",
+     "raised_ts": 1791132171465,
+     "observed": {
+      "term_answer_ts": 1791132160231,
+      "term_billed_seconds": 26
+     },
+     "detail": "orig 11s vs term 26s",
+     "orig_billed_seconds": 11,
+     "dest_prefix": "1",
+     "signature_verified": true
+    },
+    {
+     "leaf_index": 15,
+     "kind": "duration_mismatch",
+     "call_id": "2-89@172.30.0.65",
+     "orig_node": "node-a",
+     "term_node": "node-c",
+     "raised_by": "node-c",
+     "period": "2026-10-04",
+     "raised_ts": 1791132171487,
+     "observed": {
+      "term_answer_ts": 1791132160721,
+      "term_billed_seconds": 26
+     },
+     "detail": "orig 11s vs term 26s",
+     "orig_billed_seconds": 11,
+     "dest_prefix": "1",
+     "signature_verified": true
+    }
+   ]
+  },
+  "get_settlement": {
+   "id": "zYJvgaCX8hCQdCrDnBWCdfzWk4CPk-Bcj3kuxNmL58Y",
+   "pair": [
+    "node-a",
+    "node-b"
+   ],
+   "period": "2026-10-04",
+   "currency": "USD",
+   "final": true,
+   "engine_signature_verified": true,
+   "acks_verified": {
+    "node-a": true,
+    "node-b": true
+   },
+   "directions": [
+    {
+     "payer": "node-a",
+     "payee": "node-b",
+     "calls": 15,
+     "seconds": 135,
+     "gross": "0.10",
+     "held_calls": 40,
+     "held_amount": "0.12"
+    },
+    {
+     "payer": "node-b",
+     "payee": "node-a",
+     "calls": 4,
+     "seconds": 44,
+     "gross": "0.02",
+     "held_calls": 0,
+     "held_amount": "0.00"
+    }
+   ],
+   "net": {
+    "payer": "node-a",
+    "payee": "node-b",
+    "amount": "0.08"
+   },
+   "counts": {
+    "passed": 19,
+    "held": 40,
+    "rejected": 0,
+    "disputed": 0,
+    "unmatched": 0,
+    "already_settled": 0
+   },
+   "held": [
+    {
+     "leaf_hash": "0u5rRhck5MyBay564to8-aCWEHPkJvInkTrdgg72kYg",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "5OhnYJYEeuxpGa9FZIys6HJFrnThbur6-x-OdOemTmA",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "63SKRmfmI5PERMTubGSmzh_Nxdw2B_W3wfPYt4S_Mm0",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "6Fa5EcMeCTbtWSXEeEPMaqr4PWo22IuT5iMQd4hvgHg",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "6TuYHCTez9yPSuq7LdcZodZmfqy_r8sz3a6BeaZX3aM",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "93IXg5G8UDPFIq9PhQgNnrvvAKQeTOU0qH_TAqqTb4M",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "9kRDgPGbQXHjlLFLtUJ1X9w_QF3eozCFGQVSPkEGv44",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "ByLaNIiq3cWr0bbqJLEzYcFLwr52GnIfqXCyyLr6lFg",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "FXRKdY7hi5RDYWl7GCTT91WmRwfUWpwmnPi8blQxMtU",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "Gq6LB1HszhXd1PHMUrVNZD-xMvU94y9h7P8Q0sdot4A",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "HzoKZL17OhIvhe6HidvAKnb6Y_RdImTB5KDY38I_IO0",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "JES5qphG2Om3d0DJgQfGZYecPhq9yQjpU5AT-LvzbJ8",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "K98kxvMb8F4mqT-1pk_h44GvqBQ5JR1RkU42LukM6qw",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "LHKprAQdsklCaZSfqk966RJXwyVVaK26n2415bE-lmk",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "MH1Y-3uYFM366uCJ7iu-rRhyxQayKzC9NgFwU035188",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "MRz1jGrqqLeWuExKyyUo8x_SCN2eF-vDxThzkyR3pNo",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "OE2o_gYiZtvUzZOfNyHWhn4BNL_uH3akl83hJDAjz_M",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "RR8BU6LyHMjO8zzI7EIP34A5Kqaqyq0lipRkmIODNkM",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "ZSZ1883IKWk8pmIMujiWSaZJw81-hOrfPTrzW2Mku7M",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "d8pqYs3HuskVOfdilPqv0aUi0Ovsvph7WvDPGq8bMts",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "fuVp3um__3ypTm6kLXe_MicRp9X6C7pYCt_oOULfQag",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "hXHRzZGBUXKlp1ul9zTpwwxPb1XN_G31s642THztRpA",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "hl0Apb-39YiXZq5_Nq8EgLXMcZYjbHJc3zqFbLcud0o",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "hrjKy2XuhCPStcBREz9wZouGH17_Pc5yBVE7vbUVekQ",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "jH_Dx1CCAC2qwX5sKpM_amemtpIdSr7Oi2uyPNVWwOk",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "l32HvItGjSQbnk37np8SNf01U4dXQ5yEVb_SYcfZpAE",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "l7pZoqZ9Dck1EpjQ5szl1zcpO9dlMtqo8UIxbwE-2Iw",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "mmS8E3EwtJssxB3mcyddbrP1Y0Nr4Tde94akbZhkUGU",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "mrBzQATy5jzwxi-gAgwh0Jn-R_EnniXpBykeUDzR1dg",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "oN758Rs0iPnr9vb9yWa4-Sja9LbL9kI6J6zAMoMNdQU",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "oZB0zo-vIz-6oUr51-tYyra90saUl_-NlgZxu5fEBmw",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "pT_KeVUqVfFFWL79O8FONUD5eVGl5ZVmun4YLwal4_I",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "q85NIKt98qah2h6pYgz8B7VFs2CF41CxrQLvJ22y2g4",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "qNEgGWgyTfOwgvuc7BbOWimjSbSo4XY3LW63_D_9NgI",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "scMXaDJERxdtbiFk0-cQ5giJ0DcRyyts7YKS0iUjCqM",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "uZUEgKco2Y0uM-n0TUaDIemXamPaJNh5XKcBT8kiy9s",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "ux_6kYk2WixO1IMf-o5Vqzq8KGs5DcoAFiIoRdo1QiU",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "w2OSbNZqeX8HnBr2RiWOku6lTamlAgjKwPqEuRNozYg",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "y-bte3umyu8EuXa5TLkqPbrok4rfzWZVbOrTqGnQZ2M",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    },
+    {
+     "leaf_hash": "yjmyHe7IMTS2RSoR-T4M3ANq_RNrMVIZIQjqcuVmjbo",
+     "verdict": "hold",
+     "reasons": [
+      "short_burst",
+      "acd_anomaly"
+     ]
+    }
+   ],
+   "log_refs": {
+    "node-a": {
+     "tree_size": 70,
+     "root_hash": "LieMdWGb7VJNyHMBKE7JkI1A-mxGixkm3xcVAXeqyEs"
+    },
+    "node-b": {
+     "tree_size": 70,
+     "root_hash": "hvg7rp4bqYb4Wggre5r42g1i2C4SakDuNDsS7rK8eUc"
+    }
+   },
+   "receipts_root": "_g9gkWosrk6eml8xchxZg9VZs7_MGWowAygzzvxWxdA",
+   "payouts": [
+    {
+     "adapter": "fiat_stub",
+     "created_ts": 1791132274373,
+     "record": {
+      "type": "invoice",
+      "invoice_id": "DOTS-2026-10-04-zYJvgaCX8hCQ",
+      "statement_id": "zYJvgaCX8hCQdCrDnBWCdfzWk4CPk-Bcj3kuxNmL58Y",
+      "period": "2026-10-04",
+      "issuer": "node-b",
+      "bill_to": "node-a",
+      "amount": "0.08",
+      "currency": "USD",
+      "issued_ts": 1791132274,
+      "due_ts": 1793724274
+     }
+    },
+    {
+     "adapter": "stablecoin_testnet",
+     "created_ts": 1791132274401,
+     "record": {
+      "type": "erc20_transfer",
+      "network": "Base Sepolia",
+      "chain_id": 84532,
+      "token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "from": "0xe8c0751Fa4f96a0c86aeD6b60Ed7617124b33501",
+      "to": "0xeE9d44e948672AE1EA11e11867110Af63A284328",
+      "amount_units": 80000,
+      "amount": "0.08",
+      "statement_id": "zYJvgaCX8hCQdCrDnBWCdfzWk4CPk-Bcj3kuxNmL58Y",
+      "tx_hash": "0x05315df44db7328b4d19ba6e28846f7abd26796a60ab23ece0c9bf3a5724b8ee",
+      "raw_tx": "0x02f8b283014a3480830f42408477359400830186a094036cbd53842c5426634e7929541ec2318f3dcf7e80b844a9059cbb000000000000000000000000ee9d44e948672ae1ea11e11867110af63a2843280000000000000000000000000000000000000000000000000000000000013880c080a07c20d3ce4ddfec3e9852a2cf2f5b02c1bd305dcd8602b8cd6a5ecc91fa3bdf5fa037b0873d16a5e2cb6d7ed75369153787af113717a9309c5ee027bf45cecdca9a",
+      "broadcast": false
+     }
+    }
+   ]
+  }
+ },
+ "invite_call_receipt": {
+  "call_key": "M3mYBlBBGBJlstAb_Na6I4XjzB3TE5DO1zWz50TFPFc",
+  "a": {
+   "outcome": "receipt",
+   "leaf_index": 9,
+   "entry": {
+    "receipt": {
+     "v": 1,
+     "type": "receipt",
+     "proposal": {
+      "v": 1,
+      "type": "proposal",
+      "end_ts": 1791132143505,
+      "period": "2026-10-04",
+      "call_id": "1-7@172.30.0.65",
+      "rate_id": "node-a>node-b:4420",
+      "from_tag": "7DOTS1",
+      "start_ts": 1791132133003,
+      "answer_ts": 1791132133095,
+      "dest_hash": "FGqG3FHEEZwKtR1srAe9eSjiNCynchhV3cLBE3FyfQg",
+      "orig_node": "node-a",
+      "term_node": "node-b",
+      "rate_table": "ZGxHMhBrZFeSIgzxDbT8zV33MseQ9Gw_U9sC-c7eVLg",
+      "attestation": "A",
+      "dest_prefix": "4420",
+      "orig_key_id": "7b69736dc59bac6eb3a453c82e264abadfd9b4c3e2a8fcc79a080b2d02c05d3f",
+      "orig_billed_seconds": 11
+     },
+     "sig_orig": "OZ_CRShdEdFTlmzwT7hBuA8CUIQpiIZSVfURKtCsXhkYt5fgUXHIG6nXPiv77DDyIqY9OOSYxe-vkFR9IJhQCg",
+     "term_end_ts": 1791132143510,
+     "term_key_id": "c12b1aff690a736f23f46e37fa820b6a158b72fb6015d0627af4063c9dbf1d0b",
+     "term_answer_ts": 1791132133091,
+     "term_billed_seconds": 11,
+     "agreed_billed_seconds": 11,
+     "term_attestation_verified": "A"
+    },
+    "sig_term": "-yKYoYv1YmcqFIs7itaYAiu9lgNuRzHbEZUJMtH3IhprvqpO6MU0WmhMPv535GPoeyS8xSGJoYveq9pel5mEDQ"
+   },
+   "sth": {
+    "sth": {
+     "v": 1,
+     "type": "sth",
+     "log_id": "node-a",
+     "tree_size": 70,
+     "root_hash": "LieMdWGb7VJNyHMBKE7JkI1A-mxGixkm3xcVAXeqyEs",
+     "timestamp": 1791132173578,
+     "key_id": "7b69736dc59bac6eb3a453c82e264abadfd9b4c3e2a8fcc79a080b2d02c05d3f"
+    },
+    "sig": "iVamPp7LXzxJhhknjhKBU6_kHGPJtGSs3fT6J2tf1sMlE70znP7vRMZFK8TBD8jEvG2PxBIEgzAuGxMqt2KNAA"
+   },
+   "inclusion": {
+    "log_id": "node-a",
+    "leaf_index": 9,
+    "tree_size": 70,
+    "leaf_hash": "OwMriF3rJeOavCVIrHv-zmd_hSmcEs6e_noV4WTkijc",
+    "path": [
+     "7FPBzfU7X23WzyFVP_f39wy5fGl3whjvaXfcRJDxsKM",
+     "Jb3q-89l65jjQUJIPBNST5W7H56v8BLhGdReAvCuMyA",
+     "yKo6wCepne_-0qMB9WlFGLye022BUB3pj8Z8mlSI4Rk",
+     "pZvhGLuo0t4k0a8r1lKgnw9NZS0w37B99UGIkkLZcAM",
+     "e5ArUqWbEmmg2eVSGXTpk19RIIvbJmh7QJKNF76Kewc",
+     "-4nXdRg35rO1w-235XuemTmyOLS4x6z9XUJrgV5fjK8",
+     "U1fXLsIVBTiEA4EASFIQdMUc4VzyLJJCE2APqcjqx8o"
+    ]
+   }
+  },
+  "same": true
+ }
+}

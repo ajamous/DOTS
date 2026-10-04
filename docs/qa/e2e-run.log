@@ -1,0 +1,45 @@
+registrations visible on every instance (node-a2 via dmq_usrloc)
+== normal: a-b-mobile x10, a-b-london x5, b-c x8, c-a x6, b-a x4
+== short_burst: a-b-burst x40
+== duration_mismatch: a-c-skew x5
+log sizes: {'node-a': '70', 'node-b': '67', 'node-c': '19'}
+log sizes: {'node-a': '70', 'node-b': '67', 'node-c': '19'}
+== outage: b-c-outage x3
+   stopping ['receipts-c']
+   waiting 35s for the countersignature window to expire
+log sizes: {'node-a': '70', 'node-b': '70'}
+   starting ['receipts-c']
+log sizes: {'node-a': '70', 'node-b': '70', 'node-c': '22'}
+log sizes: {'node-a': '70', 'node-b': '70', 'node-c': '22'}
+   restarting every receipt service (log reload from Postgres)
+log sizes: {'node-a': '70', 'node-b': '70', 'node-c': '22'}
+log sizes: {'node-a': '70', 'node-b': '70', 'node-c': '22'}
+log sizes: {'node-a': '70', 'node-b': '70', 'node-c': '22'}
+log sizes: {'node-a': '70', 'node-b': '70', 'node-c': '22'}
+============================= test session starts ==============================
+platform linux -- Python 3.12.15, pytest-9.1.1, pluggy-1.6.0 -- /app/.venv/bin/python3
+hypothesis profile 'default'
+rootdir: /app
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0, hypothesis-6.168.3
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 18 items
+lab/tests/test_e2e.py::test_every_scenario_produced_its_outcome_in_both_logs PASSED [  5%]
+lab/tests/test_e2e.py::test_receipts_dual_signed_and_billed_as_expected PASSED [ 11%]
+lab/tests/test_e2e.py::test_disputes PASSED                              [ 16%]
+lab/tests/test_e2e.py::test_inclusion_proofs_verify_against_signed_tree_heads PASSED [ 22%]
+lab/tests/test_e2e.py::test_no_full_numbers_in_any_log PASSED            [ 27%]
+lab/tests/test_e2e.py::test_no_integrity_alarms PASSED                   [ 33%]
+lab/tests/test_e2e.py::test_peers_hold_each_others_tree_heads PASSED     [ 38%]
+lab/tests/test_mcp.py::test_tools_are_read_only PASSED                   [ 44%]
+lab/tests/test_mcp.py::test_list_peers PASSED                            [ 50%]
+lab/tests/test_mcp.py::test_get_receipt_and_verify_inclusion PASSED      [ 55%]
+lab/tests/test_mcp.py::test_list_disputes PASSED                         [ 61%]
+lab/tests/test_mcp.py::test_get_settlement PASSED                        [ 66%]
+lab/tests/test_settlement.py::test_one_final_statement_per_pair PASSED   [ 72%]
+lab/tests/test_settlement.py::test_totals_match_scenarios PASSED         [ 77%]
+lab/tests/test_settlement.py::test_short_burst_held_by_fraud_gate PASSED [ 83%]
+lab/tests/test_settlement.py::test_mismatch_disputes_excluded PASSED     [ 88%]
+lab/tests/test_settlement.py::test_payouts PASSED                        [ 94%]
+lab/tests/test_settlement.py::test_html_statement PASSED                 [100%]
+============================== 18 passed in 4.22s ==============================
