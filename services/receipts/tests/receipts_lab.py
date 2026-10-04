@@ -132,6 +132,7 @@ class Lab:
     router: Router
     clock: Clock
     observer: NodeIdentity
+    settlement: NodeIdentity | None = None
     internal: dict[str, httpx.AsyncClient] = field(default_factory=dict)
     seq: int = 0
 
@@ -226,7 +227,7 @@ async def _make_lab(tmp_path: Path, dbs: dict[str, str]) -> Lab:
     router = Router()
     clock = Clock()
     nodes: dict[str, ReceiptNode] = {}
-    lab = Lab(nodes, idents, keyring, router, clock, observer)
+    lab = Lab(nodes, idents, keyring, router, clock, observer, settlement)
     for n in NODES:
         s = Settings(
             node_id=n,

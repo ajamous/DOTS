@@ -15,6 +15,7 @@ Layout:
     <node>/stir/             ES256 STIR/SHAKEN certificate and key
     <node>/token             bearer token for Kamailio -> receipt service
     <node>/kamailio/node.cfg Kamailio defines and generated routes
+    <node>/wallet.key        testnet-only EVM key (stablecoin payout adapter)
     settlement/, observer/   identities for the settlement engine and MCP server
 """
 
@@ -31,6 +32,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+from eth_account import Account
 
 from dots_common.identity import NodeIdentity
 from dots_common.models import PeerRegistry, RateTable, SignedRateTable, body
@@ -230,6 +232,8 @@ def bootstrap(state: Path, topo: dict[str, Any], force: bool = False) -> bool:
         _save_pair(d / "tls", *issue(ca_key, ca_cert, node, dns))
         _save_pair(d / "stir", *issue(sti_key, sti_cert, f"SHAKEN {node}", [], tls=False))
         _write(d / "token", secrets.token_urlsafe(32), 0o600)
+        wallet = Account.create()  # testnet-only lab wallet; never funded on mainnet
+        _write(d / "wallet.key", "0x" + bytes(wallet.key).hex(), 0o600)
         _write(d / "kamailio/node.cfg", kamailio_node_cfg(node, topo))
         peers.append(
             ident.peer_entry(
@@ -238,6 +242,7 @@ def bootstrap(state: Path, topo: dict[str, Any], force: bool = False) -> bool:
                 sip_uri=f"sip:{node}:5061;transport=tls",
                 stir_x5u=f"http://{node}:8088/stir/cert.pem",
                 ranges=spec["ranges"],
+                settlement_address=wallet.address,
             )
         )
     for role in ("settlement", "observer"):
