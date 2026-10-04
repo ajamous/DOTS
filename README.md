@@ -6,7 +6,7 @@ Independent operators (carriers, PBX owners, voice-agent platforms) run a DOTS n
 
 The ledger proves *what was exchanged and agreed*. It does not route calls, hold presence, or mint anything. There is no token.
 
-> **Status:** Phase 1. Receipt service, Merkle log and the 3-operator Kamailio lab are working; settlement and the MCP server are next.
+> **Status:** Phase 1. Receipt service, Merkle log, the 3-operator Kamailio lab, settlement with fraud gate and payouts are working; the MCP server is next.
 > See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design and [`docs/PLAN.md`](docs/PLAN.md) for the build plan.
 
 ## What a node is

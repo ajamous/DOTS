@@ -39,7 +39,7 @@ Branch per milestone, one PR per milestone. Each PR leaves `main`/`master` green
    - the Identity header is verified with the expected attestation;
    - registration on node-a1 is reachable via node-a2 (`dmq_usrloc`).
 
-## Milestone 4: Settlement, fraud gate and payouts
+## Milestone 4: Settlement, fraud gate and payouts — done
 
 1. Rate tables, Decimal netting, interval rounding, cutoff and grace, late adjustments.
 2. `FraudGate` protocol with `local_rules` (six rules), the `ovs` stub (config keys, `NotImplementedError`, fail-closed) and verdict composition.
@@ -61,6 +61,9 @@ Branch per milestone, one PR per milestone. Each PR leaves `main`/`master` green
 | Signed peer registry | `peers.json` is distributed by the lab bootstrap, not signed per operator | Each operator signs its own entry; registry = set of signed entries |
 | mTLS identity binding in the receipt service | Authorization uses request signatures; the client certificate is only a transport gate | Expose the peer certificate to the app (proxy header or ASGI TLS extension) and bind it to `node_id` |
 | Transit (A→B→C) | Phase 1 refuses numbers outside the terminating node's own ranges | Per-hop receipts chained by a shared reference |
+| Fraud baselines | ACD/ASR rules use absolute thresholds; there is no trailing per-prefix history yet | Keep per-prefix daily aggregates and compare against a trailing window |
+| Open Voice Shield | Adapter is a stub (config keys, fail-closed) | Implement the HTTP client against the OVS scoring API |
+| Dispute resolution | Disputes are listed and excluded; there is no workflow to resolve them | Re-proposal or manual adjudication, logged as new entries |
 
 ## Corrections to the brief (proposed; details in ARCHITECTURE.md)
 

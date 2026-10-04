@@ -367,6 +367,8 @@ class Peer(Strict):
     agreement_key: B64 | None = None
     # E.164 ranges this node terminates (static operator data, ARCHITECTURE.md §8.1)
     ranges: list[Prefix] = Field(default_factory=list)
+    # Testnet wallet that receives stablecoin settlements (lab only)
+    settlement_address: Annotated[str, Field(pattern=r"^0x[0-9a-fA-F]{40}$")] | None = None
 
 
 class PeerRegistry(Strict):

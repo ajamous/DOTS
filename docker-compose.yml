@@ -11,6 +11,7 @@ x-services-image: &services-image
   build:
     context: .
     dockerfile: services/Dockerfile
+    target: runtime
     secrets: [extra_ca]
 
 x-kamailio-image: &kamailio-image
@@ -253,6 +254,28 @@ services:
     networks:
       sip: {ipv4_address: 172.30.0.97}
 
+  # ------------------------------------------------------------ settlement
+  settlement:
+    <<: *services-image
+    command: ["dots-settlement"]
+    environment:
+      DOTS_LAB_MODE: "true"
+      DOTS_PAYOUT_ADAPTERS: fiat_stub,stablecoin_testnet
+      DOTS_STABLECOIN_CHAIN_ID: "84532"
+      DOTS_STABLECOIN_DRY_RUN: "true"
+    volumes: ["state:/state:ro", "settlement-data:/data"]
+    depends_on:
+      <<: *depends-bootstrap
+      receipts-a: {condition: service_healthy}
+      receipts-b: {condition: service_healthy}
+      receipts-c: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz')"]
+      interval: 3s
+      retries: 40
+    networks:
+      sip: {ipv4_address: 172.30.0.40}
+
   # ------------------------------------------------------------ test runner
   tester:
     <<: *services-image
@@ -276,6 +299,7 @@ networks:
 
 volumes:
   state: {}
+  settlement-data: {}
 
 secrets:
   extra_ca:

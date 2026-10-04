@@ -50,6 +50,12 @@ from dots_common.protocol import (
     verify_proposal,
     verify_receipt,
 )
+from dots_common.settlement import (
+    SignedStatement,
+    StatementMismatch,
+    recompute_check,
+    statement_id,
+)
 from dots_common.signing import Context
 
 from .config import Settings
@@ -817,6 +823,49 @@ class ReceiptNode:
                 if s is not None:
                     out.append(s)
         return out
+
+    # ------------------------------------------------------------------ statements
+
+    async def ack_statement(self, ss: SignedStatement, sender: str) -> ProposalResult:
+        """Recompute a settlement statement from our own log; countersign if equal."""
+        st = ss.statement
+        p = self.keyring.peer(sender)
+        if p is None or p.role != "settlement":
+            return ProposalResult(403, {"error": "only the settlement engine may ask"})
+        if self.node_id not in st.pair:
+            return ProposalResult(400, {"error": "not a party to this statement"})
+        if not self.keyring.verify(
+            sender, st.engine_key_id, Context.STATEMENT, body(st), ss.sig_engine
+        ):
+            return ProposalResult(400, {"error": "bad engine signature"})
+        ref = st.log_refs.get(self.node_id)
+        if (
+            ref is None
+            or ref.tree_size > len(self.tree)
+            or (b64u(self.tree.root(ref.tree_size)) != ref.root_hash)
+        ):
+            return ProposalResult(409, {"error": "log reference does not match our log"})
+        a, b = st.pair
+        async with self.db().connection() as conn:
+            cur = await conn.execute(
+                "SELECT entry_jcs, entry FROM log_leaves WHERE kind = 'receipt' AND period = %s"
+                " AND ((orig_node = %s AND term_node = %s) OR (orig_node = %s AND term_node = %s))"
+                " AND idx < %s",
+                (st.period, a, b, b, a, ref.tree_size),
+            )
+            rows = await cur.fetchall()
+        own = {
+            b64u(leaf_hash(bytes(r["entry_jcs"]))): SignedReceipt.model_validate(r["entry"])
+            for r in rows
+        }
+        tables = [t for t in self.tables.tables if t.table.pair == st.pair]
+        try:
+            recompute_check(st, own, tables)
+        except (StatementMismatch, ValueError) as exc:
+            await self._alarm(None, "statement_mismatch", f"{statement_id(st)}: {exc}")
+            return ProposalResult(409, {"error": str(exc)})
+        sig = self.ident.signing.sign(Context.STATEMENT_ACK, body(st))
+        return ProposalResult(200, {"node_id": self.node_id, "sig": sig})
 
     # ------------------------------------------------------------------ scheduling
 

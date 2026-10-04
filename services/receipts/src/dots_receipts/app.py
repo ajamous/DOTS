@@ -15,6 +15,7 @@ from dots_common.b64 import unb64u
 from dots_common.identity import verify_request
 from dots_common.models import CallEnd, SignedDispute, SignedProposal, body
 from dots_common.protocol import ProtocolError
+from dots_common.settlement import SignedStatement
 
 from .node import ReceiptNode, parse_entry
 
@@ -180,6 +181,29 @@ def peer_app(node: ReceiptNode) -> FastAPI:
             (period,),
         )
         return {"node_id": node.node_id, "period": period, "stats": rows}
+
+    @app.get("/v1/media")
+    async def media(who: Caller, period: str) -> dict[str, Any]:
+        """Per-call media packet counts from this node's rtpengine (fraud-gate input)."""
+        if role(who) not in ("settlement", "observer"):
+            raise HTTPException(403, "settlement or observer role required")
+        rows = await _rows(
+            "SELECT call_key, direction, peer_node, (cdr->'media'->>'pkts_in')::bigint AS pkts_in,"
+            " (cdr->'media'->>'pkts_out')::bigint AS pkts_out FROM cdrs"
+            " WHERE period = %s AND status = 'answered' AND cdr->'media' IS NOT NULL"
+            " AND jsonb_typeof(cdr->'media') = 'object'",
+            (period,),
+        )
+        return {"node_id": node.node_id, "period": period, "media": rows}
+
+    @app.post("/v1/statements/ack")
+    async def statement_ack(request: Request, who: Caller) -> JSONResponse:
+        try:
+            ss = SignedStatement.model_validate_json(await request.body())
+        except ValidationError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        r = await node.ack_statement(ss, who)
+        return JSONResponse(r.payload, status_code=r.status)
 
     return app
 

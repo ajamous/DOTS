@@ -10,7 +10,7 @@ dependencies = []
 package = false
 
 [tool.uv.workspace]
-members = ["services/common", "services/receipts", "lab"]
+members = ["services/common", "services/receipts", "services/settlement", "lab"]
 
 [dependency-groups]
 dev = [
@@ -23,12 +23,14 @@ dev = [
   "dots-common",
   "dots-receipts",
   "dots-lab",
+  "dots-settlement",
 ]
 
 [tool.uv.sources]
 dots-common = { workspace = true }
 dots-receipts = { workspace = true }
 dots-lab = { workspace = true }
+dots-settlement = { workspace = true }
 
 [tool.ruff]
 line-length = 100
@@ -49,16 +51,16 @@ known-first-party = ["dots_common", "dots_receipts", "dots_settlement", "dots_mc
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-mypy_path = ["services/common/src", "services/receipts/src", "lab/src"]
+mypy_path = ["services/common/src", "services/receipts/src", "services/settlement/src", "lab/src"]
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-module = ["rfc8785"]
+module = ["rfc8785", "eth_account", "eth_account.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"
-pythonpath = ["services/common/tests", "services/receipts/tests"]
+pythonpath = ["services/common/tests", "services/receipts/tests", "services/settlement/tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["services", "lab/unit"]

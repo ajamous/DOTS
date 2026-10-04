@@ -22,7 +22,7 @@ lint:
 	uv run ruff format --check services lab
 
 typecheck:
-	uv run mypy services/common/src services/receipts/src lab/src
+	uv run mypy services/common/src services/receipts/src services/settlement/src lab/src
 
 check: lint typecheck
 
