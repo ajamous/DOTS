@@ -1,3 +1,8 @@
+> **Historical document.** This is the original 2018 D.O.T.S paper, kept unedited for reference.
+> DOTS 2.0 has replaced its design; see [`../README.md`](../README.md) and
+> [`ARCHITECTURE.md`](ARCHITECTURE.md) for what changed and why.
+> Originally published at <https://www.telecomsxchange.com/blog/decentralized-telecom-networks-d-o-t-s-project>.
+
 # DOTS
 
 Blockchain:
