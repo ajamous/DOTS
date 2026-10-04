@@ -1,0 +1,19 @@
+# Secrets and generated key material: never commit
+.env
+*.pem
+*.key
+*.crt
+*.p12
+lab/.state/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+dist/
+build/
+*.egg-info/
