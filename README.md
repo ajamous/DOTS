@@ -51,9 +51,10 @@ docs/                 Architecture, plan, 2018 paper
 | Federation | 3 operators, 4 Kamailio instances, SIP over mutual TLS, peer identity from certificate CN |
 | STIR/SHAKEN | Identity signed by the originating node and verified by the terminating node (x5u fetch, lab STI-CA) |
 | Replication | `dmq_usrloc` inside operator A's two-instance cluster; every inbound call to A depends on it |
-| Receipts | 78 real calls with G.711 RTP: 73 dual-signed receipts and 5 disputes, each byte-identical in both parties' logs; no full numbers anywhere |
+| Receipts | 81 real calls with G.711 RTP: 73 dual-signed receipts and 8 disputes, each byte-identical in both parties' logs; no full numbers anywhere |
 | Integrity | Inclusion and consistency proofs, peer monitoring, equivocation detection through STH gossip |
 | Disputes | Injected 15 s duration skew becomes `duration_mismatch` disputes, excluded from settlement |
+| Resilience | A receipt service stopped mid-traffic: the peer raises `missing_countersignature` disputes and delivers them on recovery; all receipt services restart with their logs intact |
 | Fraud gate | A 40-call short-duration burst is held (`short_burst`, `acd_anomaly`) |
 | Settlement | Per-pair daily statements, recomputed and countersigned by both peers; totals match values computed independently from the scenario file |
 | Payouts | Invoice records and signed (not broadcast) Base Sepolia USDC transfers |

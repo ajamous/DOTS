@@ -35,6 +35,11 @@ def matching(entries: list[dict[str, Any]], s: dict[str, Any]) -> list[dict[str,
     return out
 
 
+def _kind(e: dict[str, Any]) -> str | None:
+    d = e["entry"].get("dispute")
+    return d["kind"] if d else None
+
+
 def test_every_scenario_produced_its_outcome_in_both_logs(
     scenarios: list[dict[str, Any]], logs: Logs
 ) -> None:
@@ -42,8 +47,8 @@ def test_every_scenario_produced_its_outcome_in_both_logs(
         o = matching(logs[s["orig"]], s)
         t = matching(logs[s["term"]], s)
         kind = "receipt" if s["expect"] == "receipt" else "dispute"
-        o_k = [e for e in o if kind in e["entry"]]
-        t_k = [e for e in t if kind in e["entry"]]
+        o_k = [e for e in o if kind in e["entry"] and _kind(e) == s.get("kind")]
+        t_k = [e for e in t if kind in e["entry"] and _kind(e) == s.get("kind")]
         assert len(o_k) == s["calls"], (s["name"], "orig", len(o_k))
         assert len(t_k) == s["calls"], (s["name"], "term", len(t_k))
         # the same signed bytes in both logs
@@ -59,6 +64,8 @@ def test_receipts_dual_signed_and_billed_as_expected(
         if s["expect"] != "receipt":
             continue
         for e in matching(logs[s["orig"]], s):
+            if "receipt" not in e["entry"]:
+                continue
             sr = SignedReceipt.model_validate(e["entry"])
             assert verify_receipt(client.keyring, sr) == [], s["name"]
             r = sr.receipt
@@ -72,9 +79,11 @@ def test_disputes(scenarios: list[dict[str, Any]], logs: Logs) -> None:
         if s["expect"] != "dispute":
             continue
         for e in matching(logs[s["term"]], s):
+            if "dispute" not in e["entry"] or _kind(e) != s["kind"]:
+                continue
             d = e["entry"]["dispute"]
             assert d["kind"] == s["kind"]
-            assert d["raised_by"] == s["term"]
+            assert d["raised_by"] == s.get("raised_by", s["term"])
 
 
 def test_inclusion_proofs_verify_against_signed_tree_heads(client: DotsClient, logs: Logs) -> None:
