@@ -1,0 +1,28 @@
+[project]
+name = "dots-receipts"
+version = "0.1.0"
+description = "DOTS 2.0 receipt service: proposals, countersignatures, disputes, Merkle log"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+  "dots-common",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "psycopg[binary]>=3.2",
+  "psycopg-pool>=3.2",
+  "httpx>=0.28",
+  "pydantic-settings>=2.6",
+]
+
+[project.scripts]
+dots-receipts = "dots_receipts.__main__:main"
+
+[tool.uv.sources]
+dots-common = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dots_receipts"]
