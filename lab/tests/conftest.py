@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from lab_helpers import settlement_post
 
 from dots_common.client import DotsClient
 
@@ -26,3 +27,16 @@ def scenarios() -> list[dict[str, Any]]:
 @pytest.fixture(scope="session")
 def logs(client: DotsClient) -> dict[str, list[dict[str, Any]]]:
     return {n: client.all_entries(n) for n in client.node_ids()}
+
+
+@pytest.fixture(scope="session")
+def run(client: DotsClient, logs: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    periods = {
+        e["entry"]["receipt"]["proposal"]["period"]
+        for es in logs.values()
+        for e in es
+        if "receipt" in e["entry"]
+    }
+    assert len(periods) == 1, periods
+    period = periods.pop()
+    return dict(settlement_post(client, "/v1/run", period=period, force="true"))

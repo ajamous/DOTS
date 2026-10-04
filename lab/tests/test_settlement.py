@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from eth_account import Account
+from lab_helpers import settlement_get
 
 from dots_common.client import DotsClient
 from dots_common.models import body
@@ -16,29 +17,6 @@ from dots_common.settlement import SignedStatement, statement_id
 from dots_common.signing import Context
 
 ROOT = Path(__file__).resolve().parent.parent
-SETTLEMENT = "http://settlement:8090"
-
-
-def settlement_get(client: DotsClient, path: str, **params: Any) -> Any:
-    from dots_common.identity import sign_request
-
-    req = client.http.build_request("GET", SETTLEMENT + path, params=params or None)
-    req.headers.update(sign_request(client.ident, "GET", req.url.raw_path.decode(), b""))
-    r = client.http.send(req)
-    r.raise_for_status()
-    return r.json() if "json" in r.headers.get("content-type", "") else r.text
-
-
-def settlement_post(client: DotsClient, path: str, **params: Any) -> Any:
-    from dots_common.identity import sign_request
-
-    req = client.http.build_request("POST", SETTLEMENT + path, params=params or None)
-    req.headers.update(sign_request(client.ident, "POST", req.url.raw_path.decode(), b""))
-    r = client.http.send(
-        req,
-    )
-    assert r.status_code == 200, r.text
-    return r.json()
 
 
 def rate(topo: dict[str, Any], payer: str, payee: str, number: str) -> dict[str, Any]:
@@ -92,19 +70,6 @@ def expected(
 
 def q(x: Decimal) -> str:
     return str(x.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN))
-
-
-@pytest.fixture(scope="session")
-def run(client: DotsClient, logs: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
-    periods = {
-        e["entry"]["receipt"]["proposal"]["period"]
-        for es in logs.values()
-        for e in es
-        if "receipt" in e["entry"]
-    }
-    assert len(periods) == 1, periods
-    period = periods.pop()
-    return dict(settlement_post(client, "/v1/run", period=period, force="true"))
 
 
 @pytest.fixture(scope="session")
