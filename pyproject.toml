@@ -1,0 +1,62 @@
+[project]
+name = "dots-workspace"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+description = "DOTS 2.0 workspace root (not a distributable package)"
+license = "Apache-2.0"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["services/common", "services/receipts"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.25",
+  "hypothesis>=6.120",
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "httpx>=0.28",
+  "dots-common",
+  "dots-receipts",
+]
+
+[tool.uv.sources]
+dots-common = { workspace = true }
+dots-receipts = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF", "SIM", "PT"]
+ignore = ["S101", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S", "PT011", "PT018"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dots_common", "dots_receipts", "dots_settlement", "dots_mcp"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = ["services/common/src", "services/receipts/src"]
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = ["rfc8785"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+pythonpath = ["services/common/tests", "services/receipts/tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["services"]
+markers = ["pg: requires Postgres (DOTS_TEST_PG_DSN)"]

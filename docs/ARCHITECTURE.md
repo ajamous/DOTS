@@ -297,7 +297,7 @@ Signed with Ed25519, context `dots/v1/sth`. Published every `sth_interval` (defa
 
 ### 6.3 Storage
 
-Postgres table `log_leaves(idx bigint primary key, leaf_hash bytea, entry jsonb, entry_jcs bytea)`. A trigger rejects `UPDATE` and `DELETE`. Appends are serialized through one advisory lock per log. Interior node hashes for complete subtrees are cached in `log_nodes(level, idx)` so that proofs are O(log n) reads. STHs are stored in `sths`.
+Postgres table `log_leaves(idx bigint primary key, leaf_hash bytea unique, kind, call_key, period, orig_node, term_node, entry jsonb, entry_jcs bytea)`. A statement-level trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`. The receipt service runs as one process per node; appends are serialized by an in-process lock and committed in the same transaction as the call's outcome row, so a call can never have an outcome without a log entry. Leaf hashes are held in memory (32 bytes per leaf, loaded at start-up and checked for gaps) and the hash of every complete, aligned power-of-two subtree is memoized, so roots and proofs are O(log n) after warm-up. STHs are stored in `sths`.
 
 ### 6.4 Receipt-service API (peer-facing, HTTPS mTLS)
 
@@ -310,8 +310,15 @@ Postgres table `log_leaves(idx bigint primary key, leaf_hash bytea, entry jsonb,
 | GET | `/v1/proof/inclusion?leaf_hash=…&tree_size=n` | Inclusion proof |
 | GET | `/v1/entries?start=i&end=j` | Raw log entries (peers and settlement only; never public) |
 | GET | `/v1/peers/sths` | Latest verified STHs this node holds for its peers (gossip) |
+| GET | `/v1/calls/{call_key}` | Outcome of one call: entry, leaf index, latest STH, inclusion proof |
+| GET | `/v1/alarms` | Integrity alarms and frozen peers |
+| GET | `/v1/cdr-stats?period=` | Attempt, answer and no-media counts per peer/prefix (settlement and observer roles only) |
 
-Local-only (bound to the node's internal network, used by Kamailio): `POST /internal/call-end`.
+**Authentication.** Every `/v1` request is signed: `X-DOTS-Node`, `X-DOTS-Key`, `X-DOTS-Ts` and `X-DOTS-Sig`, an Ed25519 signature (context `dots/v1/request`) over `{method, path+query, ts, sha256(body)}`, valid for ±60 s. The transport is HTTPS with the lab CA, and the server requires a client certificate. The *identity* used for authorization is the request signature, not the certificate, because the ASGI server does not expose the peer certificate to the application. A proposal is accepted only from its `orig_node`, and a dispute only from its `raised_by`. Nodes see only the log entries they are a party to; `settlement` and `observer` roles see all entries. `call_key` = base64url(SHA-256(JCS([orig_node, call_id, from_tag]))).
+
+Local-only (plain HTTP on the node's internal network, bearer token, used by Kamailio): `POST /internal/call-end`, `POST /internal/tick` (run all periodic work now; used by the lab tests), `GET /healthz`.
+
+**Pseudonymization at ingestion.** On `call-end` the service immediately turns the event into a `LocalCdr`: it derives the period, computes `dest_hash` with the pair/period key, resolves the rate-table prefix and `rate_id`, and then discards the number. The terminating node compares these precomputed values with the proposal. No table in the receipt service holds a full number.
 
 ### 6.5 Monitoring and gossip
 

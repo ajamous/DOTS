@@ -12,7 +12,7 @@ Branch per milestone, one PR per milestone. Each PR leaves `main`/`master` green
 - [x] `.gitignore` covering keys, certs and `.env`.
 - [x] Decisions recorded (see Decisions log); `LICENSE` (Apache-2.0) and `NOTICE` added.
 
-## Milestone 2: Receipt service (no SIP yet)
+## Milestone 2: Receipt service (no SIP yet) — done
 
 1. `services/common`: JCS wrapper, domain-separated Ed25519 sign/verify, `key_id`, X25519 + HKDF pair keys and dest-hash HMAC, Pydantic v2 models with `extra="forbid"`.
 2. RFC 9162 Merkle library: MTH, inclusion and consistency proof generation and verification. Tests include known-answer vectors cross-checked against an independent implementation, plus hypothesis property tests (every inclusion proof verifies for all `(m, n)` up to 512, and every consistency proof verifies; tampered proofs fail).
