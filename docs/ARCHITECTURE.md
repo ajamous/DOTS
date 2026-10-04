@@ -539,6 +539,7 @@ SIPp scenarios (`lab/scenarios.json`, run by `lab/run_e2e.py`):
 | `normal` | A→B mobile ×10 (7.4 s, 1/1 billing), A→B London ×5, B→C ×8, C→A ×6, B→A ×4 (10.4 s) | One identical dual-signed receipt per call in both logs, billed 8 s / 11 s, attestation A verified by the terminating node |
 | `short_burst` | A→B ×40 at 10 cps, 2.4 s each | Receipts valid; settlement **holds** them (`short_burst`, Milestone 4) |
 | `duration_mismatch` | A→C ×5; node-c's receipt service adds 15 s to its own measurement (`DOTS_LAB_SKEW`, honored only with `DOTS_LAB_MODE`) | **Disputes** `duration_mismatch` in both logs; excluded from settlement |
+| `outage` | B→C ×3 while node-c's receipt service is stopped; after the countersignature window (30 s in the lab) node-c comes back, then every receipt service is restarted | node-b raises signed `missing_countersignature` disputes and delivers them once node-c is back (same bytes in both logs); logs reload from Postgres with consistent tree heads and no integrity alarms; the calls are never settled |
 
 Durations avoid whole seconds, so `ceil()` is stable under jitter: 7.4 s bills 8 s. Expected values come from the scenario file, never from the system under test.
 

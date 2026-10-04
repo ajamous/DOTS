@@ -4,6 +4,8 @@
 1. Wait until every PBX has registered.
 2. Run each scenario group from lab/scenarios.json with SIPp (entries of a
    group run concurrently), requiring every call to succeed.
+   The "outage" group stops a receipt service during its calls, waits for the
+   countersignature window, brings it back, then restarts every receipt service.
 3. Flush the receipt services (exchange, STH, monitoring) a few times.
 4. Run the assertions in lab/tests inside the "tester" container.
 """
@@ -18,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 COMPOSE = ["docker", "compose", "--project-directory", str(ROOT)]
 RECEIPTS = {"node-a": "receipts-a", "node-b": "receipts-b", "node-c": "receipts-c"}
+OUTAGE_WAIT = 35  # > DOTS_COUNTERSIG_WINDOW_S (30 in the lab)
 
 FLUSH = """
 import json, urllib.request
@@ -61,8 +64,40 @@ def sipp(entry: dict, port: int) -> subprocess.Popen[str]:
     )
 
 
-def run_group(name: str, entries: list[dict]) -> None:
-    print(f"== {name}: " + ", ".join(f"{e['name']} x{e['calls']}" for e in entries))
+def wait_healthy(services: list[str], timeout: float = 120) -> None:
+    deadline = time.time() + timeout
+    for svc in services:
+        while True:
+            out = sh("ps", "--format", "{{.Health}}", svc, check=False, capture=True).stdout
+            if "healthy" in out and "unhealthy" not in out:
+                break
+            if time.time() > deadline:
+                sys.exit(f"{svc} did not become healthy")
+            time.sleep(2)
+
+
+def run_outage(entries: list[dict]) -> None:
+    """Calls while the terminating receipt service is down, then recovery and restarts."""
+    down = sorted({e["outage"] for e in entries})
+    print(f"   stopping {down}")
+    sh("stop", *down)
+    run_group("outage calls", entries, header=False)
+    print(f"   waiting {OUTAGE_WAIT}s for the countersignature window to expire")
+    time.sleep(OUTAGE_WAIT)
+    flush(rounds=1, pause=0, skip=set(down))
+    print(f"   starting {down}")
+    sh("start", *down)
+    wait_healthy(down)
+    flush(rounds=2)
+    every = list(RECEIPTS.values())
+    print("   restarting every receipt service (log reload from Postgres)")
+    sh("restart", *every)
+    wait_healthy(every)
+
+
+def run_group(name: str, entries: list[dict], header: bool = True) -> None:
+    if header:
+        print(f"== {name}: " + ", ".join(f"{e['name']} x{e['calls']}" for e in entries))
     procs = [(e, sipp(e, 5080 + 10 * i)) for i, e in enumerate(entries)]
     failed = []
     for e, p in procs:
@@ -74,10 +109,12 @@ def run_group(name: str, entries: list[dict]) -> None:
         sys.exit(f"SIPp scenarios failed: {failed}")
 
 
-def flush(rounds: int = 4, pause: float = 2.0) -> None:
+def flush(rounds: int = 4, pause: float = 2.0, skip: set[str] | None = None) -> None:
     for _ in range(rounds):
         sizes = {}
         for node, svc in RECEIPTS.items():
+            if skip and svc in skip:
+                continue
             out = sh("exec", "-T", svc, "python", "-c", FLUSH.format(node=node), capture=True)
             sizes[node] = out.stdout.strip()
         print("log sizes:", sizes)
@@ -86,7 +123,7 @@ def flush(rounds: int = 4, pause: float = 2.0) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--groups", default="normal,short_burst,duration_mismatch")
+    ap.add_argument("--groups", default="normal,short_burst,duration_mismatch,outage")
     ap.add_argument("--skip-calls", action="store_true", help="only run the assertions")
     args = ap.parse_args()
     scenarios = json.loads((ROOT / "lab/scenarios.json").read_text())["groups"]
@@ -94,7 +131,12 @@ def main() -> None:
     if not args.skip_calls:
         wait_registered()
         for g in groups:
-            run_group(g, scenarios[g])
+            if g == "outage":
+                flush(rounds=2)
+                print("== outage: " + ", ".join(f"{e['name']} x{e['calls']}" for e in scenarios[g]))
+                run_outage(scenarios[g])
+            else:
+                run_group(g, scenarios[g])
             time.sleep(3)  # let BYE-time events reach the receipt services
         flush()
     r = sh(

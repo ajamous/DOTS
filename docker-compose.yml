@@ -58,6 +58,7 @@ x-receipts-env: &receipts-env
   DOTS_TLS_CA: /state/ca/ca.pem
   DOTS_STH_INTERVAL_S: "5"
   DOTS_MONITOR_INTERVAL_S: "5"
+  DOTS_COUNTERSIG_WINDOW_S: "30"
   DOTS_LAB_MODE: "true"
 
 x-kamailio: &kamailio
