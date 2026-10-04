@@ -13,22 +13,24 @@ COPY pyproject.toml uv.lock ./
 COPY services/common/pyproject.toml services/common/pyproject.toml
 COPY services/receipts/pyproject.toml services/receipts/pyproject.toml
 COPY services/settlement/pyproject.toml services/settlement/pyproject.toml
+COPY services/mcp/pyproject.toml services/mcp/pyproject.toml
 COPY lab/pyproject.toml lab/pyproject.toml
 RUN --mount=type=secret,id=extra_ca \
     if [ -s /run/secrets/extra_ca ]; then export SSL_CERT_FILE=/run/secrets/extra_ca; fi; \
     mkdir -p services/common/src/dots_common services/receipts/src/dots_receipts \
-      services/settlement/src/dots_settlement lab/src/dots_lab \
+      services/settlement/src/dots_settlement services/mcp/src/dots_mcp lab/src/dots_lab \
  && uv sync --frozen --no-dev --all-packages --no-install-workspace
 COPY services/common services/common
 COPY services/receipts services/receipts
 COPY services/settlement services/settlement
+COPY services/mcp services/mcp
 COPY lab/pyproject.toml lab/topology.json lab/
 COPY lab/src lab/src
 RUN --mount=type=secret,id=extra_ca \
     if [ -s /run/secrets/extra_ca ]; then export SSL_CERT_FILE=/run/secrets/extra_ca; fi; \
     uv sync --frozen --no-dev --all-packages --no-editable \
     --reinstall-package dots-common --reinstall-package dots-receipts \
-    --reinstall-package dots-settlement --reinstall-package dots-lab
+    --reinstall-package dots-settlement --reinstall-package dots-mcp --reinstall-package dots-lab
 ENV PATH="/app/.venv/bin:$PATH"
 RUN useradd --system --uid 10001 dots && mkdir -p /data && chown dots:dots /data
 USER dots
@@ -40,6 +42,6 @@ RUN --mount=type=secret,id=extra_ca \
     if [ -s /run/secrets/extra_ca ]; then export SSL_CERT_FILE=/run/secrets/extra_ca; fi; \
     uv sync --frozen --all-packages --no-editable \
     --reinstall-package dots-common --reinstall-package dots-receipts \
-    --reinstall-package dots-settlement --reinstall-package dots-lab
+    --reinstall-package dots-settlement --reinstall-package dots-mcp --reinstall-package dots-lab
 COPY lab/tests lab/tests
 COPY lab/scenarios.json lab/scenarios.json

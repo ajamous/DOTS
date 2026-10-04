@@ -276,6 +276,22 @@ services:
     networks:
       sip: {ipv4_address: 172.30.0.40}
 
+  # ------------------------------------------------------------ agent interface
+  mcp:
+    <<: *services-image
+    command: ["dots-mcp"]
+    environment:
+      DOTS_MCP_TRANSPORT: streamable-http
+      DOTS_MCP_HOST: 0.0.0.0
+      DOTS_MCP_PORT: "8000"
+      DOTS_MCP_SETTLEMENT_URL: http://settlement:8090
+    volumes: ["state:/state:ro"]
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      settlement: {condition: service_healthy}
+    networks:
+      sip: {ipv4_address: 172.30.0.41}
+
   # ------------------------------------------------------------ test runner
   tester:
     <<: *services-image

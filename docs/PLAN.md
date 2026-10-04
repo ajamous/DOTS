@@ -47,7 +47,7 @@ Branch per milestone, one PR per milestone. Each PR leaves `main`/`master` green
 4. Payout: `fiat_stub`, and `stablecoin_testnet` (testnet chain-id allow-list; tested against anvil with a mock USDC in CI; manual Base Sepolia target).
 5. SIPp `short_burst` (held) and `duration_mismatch` (disputed) scenarios. `make test` asserts statement totals against values precomputed from the scenario files.
 
-## Milestone 5: MCP server and CI
+## Milestone 5: MCP server and CI — done
 
 1. `services/mcp` on `mcp` 2.3.0 (`MCPServer`) with read-only tools: `list_peers`, `get_receipt`, `verify_inclusion`, `get_settlement`, `list_disputes`.
 2. GitHub Actions: ruff, mypy, pytest, then the lab job (compose up, `make test`, compose down) on `ubuntu-latest`. Kamailio and rtpengine images are built in CI with layer caching.
