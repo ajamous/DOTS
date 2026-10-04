@@ -6,7 +6,7 @@ Independent operators (carriers, PBX owners, voice-agent platforms) run a DOTS n
 
 The ledger proves *what was exchanged and agreed*. It does not route calls, hold presence, or mint anything. There is no token.
 
-> **Status:** Phase 1. Receipt service, Merkle log, the 3-operator Kamailio lab, settlement with fraud gate and payouts are working; the MCP server is next.
+> **Status:** Phase 1 complete. The 3-operator lab runs end to end: SIP calls through Kamailio with STIR/SHAKEN, dual-signed receipts in RFC 9162 logs, fraud-gated settlement countersigned by both peers, payouts (fiat invoice, testnet USDC), and a read-only MCP server for agents. Known gaps are listed in [`docs/PLAN.md`](docs/PLAN.md#follow-up-work-known-gaps-not-in-phase-1).
 > See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design and [`docs/PLAN.md`](docs/PLAN.md) for the build plan.
 
 ## What a node is
@@ -30,17 +30,34 @@ DOTS started in 2018 as a paper proposing replicated SIP registrars plus a block
 - **E.164 cannot be decentralized**, and PSTN-bridging nodes carry licensing and lawful-intercept duties. DOTS nodes are accountable, identified operators.
 - **No token, no ICO.** Settlement is in fiat or an existing stablecoin.
 
-## Repository layout (target for Phase 1)
+## Repository layout
 
 ```
-node/kamailio/        Kamailio config templates, per-node rendering
-node/rtpengine/       rtpengine config
+node/kamailio/        Kamailio 6.x routing script, entrypoint, image
+node/rtpengine/       rtpengine image
+services/common/      Shared primitives: JCS, Ed25519, RFC 9162 Merkle, protocol, netting
 services/receipts/    Receipt service (FastAPI, Postgres)
 services/settlement/  Settlement engine, fraud gate, payout adapters
 services/mcp/         Read-only MCP server
-lab/                  docker compose lab, SIPp scenarios, cert/key bootstrap
+lab/                  Topology, bootstrap, SIPp scenarios, end-to-end tests
+docker-compose.yml    The lab
 docs/                 Architecture, plan, 2018 paper
 ```
+
+## What the lab demonstrates
+
+| | |
+|---|---|
+| Federation | 3 operators, 4 Kamailio instances, SIP over mutual TLS, peer identity from certificate CN |
+| STIR/SHAKEN | Identity signed by the originating node and verified by the terminating node (x5u fetch, lab STI-CA) |
+| Replication | `dmq_usrloc` inside operator A's two-instance cluster; every inbound call to A depends on it |
+| Receipts | 78 real calls with G.711 RTP: 73 dual-signed receipts and 5 disputes, each byte-identical in both parties' logs; no full numbers anywhere |
+| Integrity | Inclusion and consistency proofs, peer monitoring, equivocation detection through STH gossip |
+| Disputes | Injected 15 s duration skew becomes `duration_mismatch` disputes, excluded from settlement |
+| Fraud gate | A 40-call short-duration burst is held (`short_burst`, `acd_anomaly`) |
+| Settlement | Per-pair daily statements, recomputed and countersigned by both peers; totals match values computed independently from the scenario file |
+| Payouts | Invoice records and signed (not broadcast) Base Sepolia USDC transfers |
+| Agents | MCP tools `list_peers`, `get_receipt`, `verify_inclusion`, `get_settlement`, `list_disputes` |
 
 Upstream projects (Kamailio, rtpengine, SIPp, Postgres) are consumed as packages or container images, never vendored.
 
@@ -58,6 +75,12 @@ make test         # all of the above, on a fresh lab
 ```
 
 Behind a TLS-intercepting proxy, set `EXTRA_CA=/path/to/ca-bundle.pem` for image builds.
+
+With the lab up, AI agents can query it through MCP at `http://127.0.0.1:8000/mcp`:
+
+```sh
+claude mcp add --transport http dots http://127.0.0.1:8000/mcp
+```
 
 ## License
 

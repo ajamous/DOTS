@@ -546,24 +546,30 @@ Durations avoid whole seconds, so `ceil()` is stable under jitter: 7.4 s bills 8
 
 ```
 services/
-  common/        dots_common: jcs, signing (domain-separated Ed25519), keys,
-                 merkle (RFC 9162), models (Pydantic v2), hmac dest-hash
-  receipts/      FastAPI app, Postgres repo, peer client, reconciler, monitor
-  settlement/    netting, rate tables, fraud gate (local_rules, ovs stub),
-                 statements (JSON+HTML), payout (fiat_stub, stablecoin_testnet)
-  mcp/           read-only MCP server
-node/kamailio/   kamailio.cfg + modules config, render script
-node/rtpengine/  rtpengine.conf
-lab/             docker-compose.yml (root), bootstrap/, sipp/, tests/ (e2e)
+  common/        dots_common: jcs, signing (domain-separated Ed25519), identity and
+                 signed requests, dest (X25519/HKDF/HMAC), merkle (RFC 9162), models,
+                 protocol (proposal/receipt/dispute), settlement (netting, statements),
+                 client (signed sync client)
+  receipts/      dots_receipts: FastAPI peer + internal APIs, Postgres (schema.sql),
+                 log and STHs, proposal exchange, disputes, monitor and gossip, acks
+  settlement/    dots_settlement: engine, fraud gate (local rules, OVS stub),
+                 statements (JSON + HTML), payouts (fiat_stub, stablecoin_testnet)
+  mcp/           dots_mcp: read-only MCP server (mcp 2.3.0, MCPServer)
+  Dockerfile     one image for all Python services (runtime and tester targets)
+node/kamailio/   kamailio.cfg, entrypoint (instance.cfg + tls.cfg), Dockerfile
+node/rtpengine/  entrypoint, Dockerfile
+lab/             topology.json, scenarios.json, bootstrap (dots_lab), sipp/,
+                 run_e2e.py, tests/ (inside the lab), unit/ (bootstrap tests)
+docker-compose.yml  the lab
 ```
 
-- Python 3.12, **uv** workspace (one lockfile), FastAPI, Pydantic v2, `cryptography` (Ed25519, X25519, HKDF), `rfc8785`, `psycopg` 3, Alembic for migrations.
-- `ruff` (lint + format), `mypy --strict` on `services/`, `pytest`; hypothesis property tests for the Merkle proofs and for JCS round-trips.
+- Python 3.12, a **uv** workspace with one lockfile, FastAPI, Pydantic v2, `cryptography` (Ed25519, X25519, HKDF, X.509), `rfc8785`, `psycopg` 3 with a pool, `eth-account` (testnet payouts only). The schema is one idempotent `schema.sql` applied at start-up under an advisory lock; there are no migrations yet.
+- `ruff` (lint + format), `mypy --strict` on every package, `pytest`, and hypothesis property tests for the Merkle proofs. CI runs the same checks plus the full lab end to end.
 - Pinned versions (verified 2026-10-04): 
 
 | Component | Version | Notes |
 |---|---|---|
-| Kamailio | 6.0.5 (Ubuntu 26.04), 6.1.4 optional | modules used: tls, dmq, dmq_usrloc, htable (dmq), dialog, acc, db_postgres, secsipid, rtpengine, http_async_client, jansson |
+| Kamailio | 6.0.5 (Ubuntu 26.04), 6.1.4 optional | modules used: tls, dmq, dmq_usrloc, usrloc, registrar, dialog, secsipid, rtpengine, http_async_client, jansson, xhttp, ipops |
 | rtpengine | mr13.5.1.4 (Ubuntu 26.04 `rtpengine-daemon`) | upstream latest is mr26.2.1.2; mr13.5 is a maintained LTS line (mr13.5.1.27, 2026-09) |
 | Python | 3.12 | per brief |
 | fastapi | 0.142.x | |
@@ -572,10 +578,28 @@ lab/             docker-compose.yml (root), bootstrap/, sipp/, tests/ (e2e)
 | rfc8785 | 0.1.4 | Trail of Bits JCS implementation |
 | psycopg | 3.3.x | |
 | mcp | 2.3.0 | 2.x renamed `FastMCP` to `MCPServer`, removed `mcp.server.fastmcp`; transport args moved to `run()` |
-| USDC testnet | Base Sepolia, chain id 84532, `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | Circle testnet USDC (address from Circle docs; re-verified before Milestone 4) |
+| USDC testnet | Base Sepolia, chain id 84532, `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | Circle testnet USDC. The address comes from Circle's documentation via search results; developers.circle.com was unreachable from the build environment, so check it before any broadcast |
 
 
-## 11. Security notes
+## 11. Agent interface (MCP)
+
+`services/mcp` exposes five tools, all annotated read-only, idempotent and non-destructive. There are no write or payout tools in Phase 1.
+
+| Tool | Returns | Verified locally before reporting |
+|---|---|---|
+| `list_peers` | Nodes (ranges, latest STH, alarm count, frozen peers) and the settlement/observer services | STH signatures |
+| `get_receipt` | A call's outcome in one node's log: receipt summary (durations, prefix, rate, attestation) or dispute | Both receipt signatures, or the dispute signature |
+| `verify_inclusion` | Inclusion of a call's entry in **both** parties' logs, with leaf index, tree size and root | STH signatures and RFC 9162 inclusion proofs |
+| `get_settlement` | Statements by period or pair, or one statement in full (directions, net, held with reasons, payouts) | Engine signature and each peer's countersignature |
+| `list_disputes` | Disputes in a node's log, filterable by kind | Dispute signatures |
+
+The server signs its requests as the `observer` identity, so it sees every entry but cannot propose, dispute or acknowledge anything. Output never contains numbers or destination hashes. It runs over stdio (default) or streamable HTTP; the lab serves streamable HTTP at `http://127.0.0.1:8000/mcp`. To connect Claude Code to the lab:
+
+```sh
+claude mcp add --transport http dots http://127.0.0.1:8000/mcp
+```
+
+## 12. Security notes
 
 - **No secrets in git.** `.env.example` documents every variable. Lab keys are generated by `bootstrap` into Docker volumes. `.gitignore` covers `*.pem`, `*.key` and `.env`.
 - **Constant-time verification** comes from `cryptography`. Signature checks never short-circuit on `key_id` lookup errors in a way that leaks which node's key is unknown.

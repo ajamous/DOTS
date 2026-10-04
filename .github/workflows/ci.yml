@@ -32,7 +32,7 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check services lab
       - run: uv run ruff format --check services lab
-      - run: uv run mypy services/common/src services/receipts/src services/settlement/src lab/src
+      - run: uv run mypy services/common/src services/receipts/src services/settlement/src services/mcp/src lab/src
       - run: uv run pytest -q
 
   lab:
