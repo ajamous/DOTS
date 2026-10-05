@@ -17,7 +17,7 @@ The ledger proves *what was exchanged and agreed*. It does not route calls, hold
 > Known gaps are listed in [`docs/PLAN.md`](docs/PLAN.md#follow-up-work-known-gaps). See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design, [`docs/PLAN.md`](docs/PLAN.md) for the build plan and [`docs/QA.md`](docs/QA.md) for test evidence.
 
 <p align="center">
-  <img src="docs/images/qa-e2e.png" alt="End-to-end lab run: 81 SIP calls across 3 operators, 18 assertions passing" width="900">
+  <img src="docs/images/qa-e2e.png" alt="End-to-end lab run: 92 SIP calls across 3 operators (RTP and SRTP, direct and transit), 22 + 4 assertions passing" width="900">
 </p>
 
 ## Use cases
