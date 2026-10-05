@@ -10,6 +10,9 @@ dependencies = [
   "pydantic>=2.10",
 ]
 
+[project.scripts]
+dots-registry = "dots_common.registry:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

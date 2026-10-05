@@ -48,3 +48,16 @@ def test_longest_prefix_first(tmp_path: Path) -> None:
     bootstrap(tmp_path, topo)
     cfg = (tmp_path / "node-a/kamailio/node.cfg").read_text()
     assert cfg.index('"^4477"') < cfg.index('"^44"')
+
+
+def test_genesis_registry_verifies_and_unsigned_is_refused(tmp_path: Path) -> None:
+    import pytest
+
+    bootstrap(tmp_path, TOPO)
+    keyring = Keyring.load(tmp_path / "peers.json")
+    assert keyring.rejected == {}
+    assert len(keyring.registry.peers) == len(TOPO["nodes"]) + 2
+    plain = tmp_path / "plain.json"
+    plain.write_text(json.dumps({"v": 1, "peers": []}))
+    with pytest.raises(ValueError, match="not a signed registry"):
+        Keyring.load(plain)
