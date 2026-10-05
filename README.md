@@ -1,10 +1,44 @@
 # DOTS 2.0
 
-**An open, verifiable call-settlement and trust layer for federated SIP operators and AI voice agents.**
+**Proof of every call, and a bill both sides agree on: open settlement for carriers and AI voice-agent platforms.**
 
-Independent operators (carriers, PBX owners, voice-agent platforms) run a DOTS node and peer with each other over SIP/TLS. Every call between two nodes produces a **receipt signed by both the originating and the terminating node**. Each node appends receipts to its own **append-only Merkle log** (Certificate Transparency style, RFC 9162 structure) and publishes signed tree heads, which peers fetch and check for consistency. A **settlement engine** nets dual-signed receipts per peer pair per period, applies a **fraud gate** that holds or rejects suspect traffic, and emits a **signed settlement statement** that can be paid in fiat or (testnet) stablecoin.
+## The problem
 
-The ledger proves *what was exchanged and agreed*. It does not route calls, hold presence, or mint anything. There is no token.
+When two operators exchange calls (a carrier and a voice-AI platform, or two carriers), each one keeps its own call records and bills from them. The records never quite match, and that causes the same four problems everywhere:
+
+- **Disputes come late and cost a lot.** The two sides find out at month end that their minutes differ, then spend weeks reconciling CSV files. Nobody can prove which record is right.
+- **Fraud gets paid before anyone notices.** Traffic pumping, IRSF and false answer supervision exist because whoever sends minutes gets paid for them. By the time a monthly review spots it, the money is gone.
+- **Caller identity is lost along the way.** STIR/SHAKEN is checked when the call arrives, but the result rarely reaches the bill. For AI agents that answer the phone, "was this caller real?" matters per call.
+- **Settlement depends on a middleman.** A clearing house or one party's billing system is the record everyone has to trust, and it takes a cut.
+
+Voice AI makes all four worse. Agent platforms buy and resell minutes from many carriers, at high volume, often to and from automated callers.
+
+## What DOTS gives you
+
+- **One signed record per call.** The calling and the receiving operator both sign the same receipt in real time: duration, rate, verified caller attestation. There is one agreed record instead of two to reconcile. Disagreements show up in seconds as signed disputes, with a workflow to settle them.
+- **Records nobody can quietly change.** Each operator keeps its receipts in a tamper-evident log, built like Certificate Transparency's, and the operators check each other's logs. Any call can be proven present and unaltered without revealing phone numbers.
+- **Fraud stopped before payment.** Suspicious traffic (short-call bursts, odd answer rates or call durations, high-risk destinations, calls with no audio, volume spikes) is held, not paid.
+- **A daily bill both sides countersign.** The settlement engine nets each pair of operators every day. Each operator recomputes the statement from its own log and countersigns it, and only then is it paid, by fiat invoice or (on testnet) USDC.
+- **Built for AI agents.** A read-only MCP server lets an agent or its orchestrator ask "was this call receipted, for how long, is it provably in both logs, what do I owe or earn today".
+- **No middleman to trust, and no token.** Settlement is bilateral and every number can be checked by both sides. DOTS runs on Kamailio and rtpengine, the SIP stack operators already use.
+
+## How it works
+
+```
+caller ── operator A's node ══ SIP over mutual TLS + STIR/SHAKEN ══ operator B's node ── callee / AI agent
+                │                                                         │
+                └──────── receipt signed by A, countersigned by B ────────┘
+                          appended to both operators' logs
+                                       │
+                 daily netting → fraud gate → statement countersigned by A and B → payout
+```
+
+Each operator runs a **DOTS node**: Kamailio, rtpengine, and a receipt service with its own Postgres. Nodes peer over SIP/TLS. When a call ends:
+1. The originating node proposes a receipt.
+2. The terminating node checks it against its own record and countersigns it, or raises a signed dispute.
+3. Both append the result to their logs.
+
+A shared **settlement engine** turns the receipts into daily statements. The ledger proves *what was exchanged and agreed*. It does not route calls, hold presence, or mint anything.
 
 > **Status:** Phase 1 and Phase 2 complete (see [`docs/PLAN.md`](docs/PLAN.md#phase-2)). The only open item is the Open Voice Shield client, which is waiting on the OVS API spec.
 >
