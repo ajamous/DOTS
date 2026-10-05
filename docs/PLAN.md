@@ -122,6 +122,12 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 - `deb.kamailio.org` is still unreachable from CI. The Kamailio project's own release image (`ghcr.io/kamailio/kamailio:6.1.4-noble`) is reachable, which matches the brief's "official images or packages".
 - `node/kamailio/Dockerfile.upstream` builds the node on it and checks every module and tool the routing script uses. A CI job runs the full lab on it, so both 6.0.5 (default, Ubuntu archive, D9) and 6.1.4 are exercised on every PR.
 
+- **Found later on Kamailio 6.1** (the CI job above): on a fresh inter-node TLS connection, the first call's 180 Ringing can reach the caller after the 200 OK.
+  - The terminating node writes both replies on a connection that was just accepted, and on 6.1 they can leave out of order.
+  - The originating node has already completed the transaction, so it forwards the late 180 statelessly, and a UA treats that as a protocol error.
+  - Fix: a global `reply_route` drops provisional replies that no longer match a transaction. Late 2xx replies still pass, because ACK retransmission depends on them.
+  - It reproduced twice in CI on the first C→A call.
+
 ### Phase 2 status
 
 All Phase 2 milestones are done, except the Open Voice Shield client (part of M9).
@@ -129,6 +135,23 @@ All Phase 2 milestones are done, except the Open Voice Shield client (part of M9
 - **What is missing:** the payload field names and the exact signature input are in `ovs.telecomsxchange.com/api/openapi.json`, which this build environment cannot reach.
 - **What runs meanwhile:** the stub adapter, fail-closed, with config keys in place.
 - **What unblocks it:** the spec itself, or the domain allowed in the environment's network policy.
+
+## After Phase 2
+
+### Deployment pattern B: Sippy RADIUS adapter and `origid` correlation — done
+
+- `dots-radius` (`services/receipts/src/dots_receipts/radius.py`) is a RADIUS accounting server for Sippy-style accounting (Cisco VSAs, per-leg Start/Stop).
+  - It verifies the Request Authenticator, maps legs to DOTS peers by remote address, and turns Stop records into call-end events.
+  - It acknowledges a record only once it is stored.
+- The PASSporT `origid` is the correlation key across B2BUAs. Kamailio puts it into every event, and the proposal carries it under the originator's signature. The terminating node matches its own CDR by `origid` when the Call-IDs differ (ARCHITECTURE.md §5.9).
+- README and ARCHITECTURE.md §8.4 describe the two deployment patterns: a DOTS edge next to the SBC, or a sidecar with no change to the call path.
+- Tests:
+  - Unit: RADIUS parsing and authenticators, Sippy's time format, leg mapping, acknowledge-after-store, B2BUA matching in both orders, and the without-`origid` and wrong-`origid` cases.
+  - Lab: two simulated Sippy switches through B2BUAs produce one dual-signed receipt, and every Kamailio receipt carries an `origid`.
+- **Correction to M11, found while adding `origid`.** Kamailio refuses `msg_apply_changes()` once `record_route()` has run. On requests, the SRTP `e2e` check therefore compared the `a=crypto` line against the unmodified message, so the offer side could never fail. `record_route()` now runs just before relaying, after rtpengine. Verified in the lab: the `c=` line changes across rtpengine on both legs, proving the check reads the rewritten SDP, while the caller's and callee's `a=crypto` keys pass both nodes byte-identical. The M11 conclusion (keys forwarded unchanged with `DTLS=off SDES-nonew ICE=remove`) holds; only its per-call proof was weaker than described until now.
+- Still to do:
+  - Confirm the exact way a production Sippy Softswitch exports the PASSporT `origid` into accounting. The adapter reads it from a `dots-origid` (or `x-dots-ref`) Cisco-AVPair.
+  - Adapters for other switches (CDR files, other RADIUS dialects).
 
 ## Follow-up work (known gaps)
 

@@ -334,6 +334,21 @@ A ──INVITE──▶ B ──INVITE──▶ C      receipts:  A→B (A pays 
 
 Not in M12: multi-hop chains beyond one transit node, and cross-checking a chain's legs against each other (for example, onward duration not above upstream duration) in the fraud gate. Each needs both pairs' receipts in one place, which the bilateral design deliberately avoids.
 
+### 5.9 Correlation through B2BUAs: the PASSporT `origid`
+
+A receipt names a call by the originator's view, `(orig_node, Call-ID, From-tag)`. That works when every element between the operators is a proxy, as Kamailio is. SBCs and softswitches (Sippy, Ribbon, AudioCodes, Metaswitch, ...) are B2BUAs, and they rewrite Call-ID and tags, so the terminating operator's record of the same call carries different values.
+
+What both operators do see is the **PASSporT `origid`** (RFC 8588). It is a UUID the originating operator signs into the STIR/SHAKEN Identity header, and B2BUAs pass that header through unchanged.
+- **The proposal carries `origid`** under the originator's signature. It is omitted when unknown, so receipts without it keep their bytes.
+- **Matching at the terminating node.** If no CDR has the proposal's call key, the node looks for an unsettled inbound CDR from the same originating peer with the same `origid` (`same_call()`).
+  - On a match it files that CDR under the proposal's call key, so the outcome, media record and orphan check all agree.
+  - The usual checks then apply: duration, timestamps, destination hash, rate.
+- **Matching in the other order.** When the proposal arrived first, the waiting inbox entry is found by `origid` once the CDR comes in.
+- **Pattern A (Kamailio):** both nodes read `origid` from the Identity header and put it in their call-end events. In the lab every receipt carries one.
+- **Pattern B (sidecar):** the switch exports it into accounting (§8.4).
+
+The `origid` is a correlation hint, not a trust decision. A forged one can at most mismatch a call, and the mismatch then surfaces as a dispute. Proposals are signed and every economic field is still checked against the terminating operator's own record. Without an `origid`, calls through B2BUAs cannot be matched: they end as `missing_term_cdr` or `missing_proposal` disputes, which is visible rather than silently wrong.
+
 ## 6. Merkle log
 
 ### 6.1 Structure
@@ -569,7 +584,7 @@ The flag that sounds right, `passthrough`, is worse: rtpengine then leaves the S
 - It still anchors the media, so packet counts keep working for `no_media`.
 - `DTLS=off` stops the DTLS re-offer; `SDES-nonew` stops it adding suites with keys of its own; `ICE=remove` keeps media on rtpengine.
 
-**How `media.e2e` is decided.** It is no longer hard-coded. On every offer and answer, Kamailio compares the SDP's first `a=crypto` line before and after rtpengine (route `RTPE`). `e2e` is true only if the call uses an SRTP profile on both legs and the line was forwarded unchanged in both directions. Every node on the path computes it independently, so a call is end to end only if every node says so.
+**How `media.e2e` is decided.** It is no longer hard-coded. On every offer and answer, Kamailio compares the SDP's first `a=crypto` line before and after rtpengine (route `RTPE`, which applies rtpengine's changes with `msg_apply_changes()` and then reads the body back). `record_route()` runs only afterwards, just before relaying, because Kamailio refuses to apply changes once a Record-Route has been added. `e2e` is true only if the call uses an SRTP profile on both legs and the line was forwarded unchanged in both directions. Every node on the path computes it independently, so a call is end to end only if every node says so.
 
 **What "end to end" means with SDES.** No node decrypts or re-encrypts the media, and only the endpoints and the SIP path ever see the keys. The keys are in the SDP, so they travel inside the signalling: TLS between nodes, and it should be TLS on the access legs too (the lab's access legs are UDP). Confidentiality against the nodes themselves requires DTLS-SRTP between the endpoints. rtpengine can only carry that by not anchoring the media (`passthrough`), which gives up packet counting. That trade-off is left to the operator and is not the default.
 
@@ -602,6 +617,60 @@ The lab proves both sides of the boundary:
 - **Long outage** (`outage` group): the window is longer than the peer's countersignature window. The peer's signed `missing_countersignature` disputes stand, and the late-recovered events do not reopen them.
 
 The event JSON is built with `jansson_set` (integers above 2^31 are passed as strings, as the module requires). Fields: `node_id, call_id, from_tag, direction, peer_node, status, sip_code, start_ts, answer_ts, end_ts, src, dst, attestation, identity_verified, media {pkts_in, pkts_out, e2e}`. The full numbers travel only to the local receipt service, which pseudonymizes them on arrival (§6.4).
+
+### 8.4 Deployment: where DOTS sits next to an SBC and a softswitch
+
+DOTS has two planes:
+- **The receipt plane** (receipt services exchanging proposals, receipts, disputes and statements over HTTPS) is always beside the call path, never in it.
+- **The SIP and media plane** is optional. The receipt service only needs, per call:
+  - a call-end event;
+  - a correlation key both operators share (§5.9);
+  - the STIR/SHAKEN result.
+
+That gives two deployment patterns.
+
+**Pattern A: a DOTS edge next to the SBC (what the lab runs).**
+
+```mermaid
+flowchart LR
+  C[customers] --> SBC1[SBC access] --> SS[softswitch<br/>routing, rating, LCR]
+  SS --> SBC2[SBC border] --> X[classic interconnects]
+  SS --> K["DOTS node<br/>Kamailio + rtpengine"] == "SIP/TLS + STIR/SHAKEN" ==> P[DOTS peers]
+  K -. call-end events .-> R[receipt service]
+  R <-. "HTTPS receipts" .-> PR[peers' receipt services]
+```
+
+- The softswitch keeps routing and rating, and sends the trunk group for DOTS peers to the DOTS node, the same way it sends other routes to the border SBC.
+- The node does mutual-TLS peering, STIR/SHAKEN signing and verification, transit, SRTP end to end, and media anchoring with packet counts.
+- It fits AI voice-agent platforms and new peerings.
+- If the SBC must stay the only public edge, put the DOTS node between the softswitch and the SBC. The receipts don't care, because they travel over HTTPS.
+
+**Pattern B: sidecar, with no change to the call path (existing carriers).**
+
+```mermaid
+flowchart LR
+  C[customers] --> SBC[SBC] --> SS[softswitch e.g. Sippy] --> SBC2[SBC] == SIP ==> PSBC[peer SBC] --> PSS[peer softswitch]
+  SS -. "RADIUS accounting<br/>(+ dots-origid)" .-> AD[dots-radius adapter] --> R[receipt service]
+  PSS -. "RADIUS accounting" .-> PAD[peer adapter] --> PR[peer receipt service]
+  R <-. "HTTPS receipts" .-> PR
+```
+
+- The switch keeps its accounting and simply lists the DOTS adapter (`dots-radius`, `services/receipts/src/dots_receipts/radius.py`) as one more RADIUS accounting server.
+- **What it reads.** It speaks the dialect of Sippy's open-source B2BUA (Cisco VSAs, which many softswitches share):
+  - `h323-call-origin` (`originate` = inbound leg, `answer` = outbound leg);
+  - `h323-remote-address`, mapped to the DOTS peer by `DOTS_RADIUS_PEERS`;
+  - `h323-setup-time`, `h323-connect-time`, `h323-disconnect-time` and `h323-disconnect-cause`;
+  - the `call-id` Cisco-AVPair;
+  - `Calling-Station-Id` and `Called-Station-Id`.
+- **What it does with them.** Each Stop record for a leg to or from a DOTS peer becomes the same call-end event Kamailio posts in pattern A. Legs on other trunks are ignored.
+- **Security and delivery.** The RADIUS Request Authenticator is verified with the shared secret, and an optional client allow-list is supported. A record is acknowledged only after the receipt service has stored it, so the switch's RADIUS client retransmits until it is safe.
+- **What the switch must add** as extra accounting attributes (Cisco-AVPair):
+  - `dots-origid=<PASSporT origid>` (or `x-dots-ref`): the correlation key (§5.9);
+  - on inbound legs, `dots-attest` and `dots-identity-verified=1` when the switch verified the caller's PASSporT.
+- **What pattern B gives up.** No rtpengine means no per-call packet counts (`no_media` does not fire) and no `e2e` media flag. The other fraud rules, receipts, logs and settlement work unchanged.
+- **Lab evidence.** `lab/tests/sidecar` plays two Sippy switches through B2BUAs (different Call-IDs, same `origid`) and checks that one dual-signed receipt lands in both logs.
+
+The two patterns can be mixed: A for some peers, B for others, both feeding the same receipt service.
 
 ## 9. Lab topology
 

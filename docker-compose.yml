@@ -41,7 +41,11 @@ x-pg: &pg
     POSTGRES_DB: dots
   volumes: ["./lab/postgres:/docker-entrypoint-initdb.d:ro"]
   healthcheck:
-    test: ["CMD", "pg_isready", "-U", "dots"]
+    # Over TCP and against the kamailio (spool) database: during first-run
+    # init the image runs a temporary server on the Unix socket only, which a
+    # plain pg_isready reports as ready, and then restarts it. Kamailio's
+    # spool connection must not land in that window.
+    test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "dots", "-d", "kamailio"]
     interval: 2s
     retries: 30
 
@@ -277,6 +281,38 @@ services:
     command: ["sleep", "infinity"]
     networks:
       sip: {ipv4_address: 172.30.0.97}
+
+  # ------------------------------------------------------------ pattern B (sidecar)
+  # RADIUS accounting adapters (services/receipts/src/dots_receipts/radius.py):
+  # an operator's existing softswitch (Sippy) sends accounting here instead of
+  # routing calls through Kamailio. In the lab the tester plays both switches.
+  # Peers map the remote address a switch reports to the DOTS peer behind it.
+  radius-a:
+    <<: *services-image
+    command: ["dots-radius"]
+    environment:
+      DOTS_NODE_ID: node-a
+      DOTS_RECEIPTS_URL: http://receipts-a:8080
+      DOTS_INTERNAL_TOKEN_FILE: /state/node-a/token
+      DOTS_RADIUS_SECRET_FILE: /state/node-a/radius.secret
+      DOTS_RADIUS_PEERS: "192.0.2.20=node-b"
+    volumes: ["state:/state:ro"]
+    depends_on:
+      receipts-a: {condition: service_healthy}
+    networks: [sip, int-a]
+  radius-b:
+    <<: *services-image
+    command: ["dots-radius"]
+    environment:
+      DOTS_NODE_ID: node-b
+      DOTS_RECEIPTS_URL: http://receipts-b:8080
+      DOTS_INTERNAL_TOKEN_FILE: /state/node-b/token
+      DOTS_RADIUS_SECRET_FILE: /state/node-b/radius.secret
+      DOTS_RADIUS_PEERS: "192.0.2.10=node-a"
+    volumes: ["state:/state:ro"]
+    depends_on:
+      receipts-b: {condition: service_healthy}
+    networks: [sip, int-b]
 
   # ------------------------------------------------------------ settlement
   settlement:

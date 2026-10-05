@@ -32,6 +32,9 @@ Seconds = Annotated[int, Field(ge=0, le=10**7)]
 Attestation = Literal["A", "B", "C", "none"]
 Prefix = Annotated[str, Field(pattern=r"^[0-9]{1,15}$")]
 DecimalStr = Annotated[str, Field(pattern=r"^-?[0-9]+(\.[0-9]+)?$")]
+# PASSporT origid (RFC 8588): an opaque UUID the originating operator signs
+# into the Identity header. It survives B2BUAs that rewrite Call-ID and tags.
+OrigId = Annotated[str, Field(pattern=r"^[0-9A-Za-z][0-9A-Za-z._:-]{0,127}$")]
 
 DisputeKind = Literal[
     "bad_signature",
@@ -101,6 +104,8 @@ class CallEnd(Strict):
     # Transit (ARCHITECTURE.md §5.8): on the outbound leg of a call this node
     # carries for another operator, the node the call came from.
     upstream_peer: NodeId | None = None
+    # PASSporT origid of the call, when the element that saw it can tell.
+    origid: OrigId | None = None
 
     @model_validator(mode="after")
     def _times(self) -> "CallEnd":
@@ -142,6 +147,7 @@ class LocalCdr(Strict):
     attestation: Attestation
     media: MediaStats | None = None
     transit_of: B64 | None = None
+    origid: OrigId | None = None
 
     @property
     def peer_node(self) -> str:
@@ -173,12 +179,16 @@ class Proposal(Strict):
     # Call key of the upstream leg when the originating node is carrying this
     # call in transit (§5.8). Absent, not null, on ordinary proposals.
     transit_of: B64 | None = None
+    # PASSporT origid: lets the terminating operator find its own record of
+    # the call when a B2BUA changed the Call-ID (§5.9). Absent when unknown.
+    origid: OrigId | None = None
 
     @model_serializer(mode="wrap")
-    def _omit_unset_transit(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+    def _omit_unset_optionals(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         data: dict[str, Any] = handler(self)
-        if data.get("transit_of") is None:
-            data.pop("transit_of", None)
+        for k in ("transit_of", "origid"):
+            if data.get(k) is None:
+                data.pop(k, None)
         return data
 
     @model_validator(mode="after")

@@ -12,6 +12,9 @@
    re-proposes, terminator approves the concession), then run the
    assertions in lab/tests/resolution (receipt in both logs, supplementary
    statement).
+6. Deployment pattern B: lab/tests/sidecar plays two Sippy softswitches
+   sending RADIUS accounting through B2BUAs (different Call-IDs, same
+   PASSporT origid) and checks the operators still agree on one receipt.
 """
 
 import argparse
@@ -129,6 +132,11 @@ def run_group(name: str, entries: list[dict], header: bool = True) -> None:
         if p.returncode not in ok:
             failed.append(e["name"])
             print(out[-3000:])
+            # SIPp's own account of what went wrong (unexpected messages, timeouts)
+            path = f"/tmp/{e['name']}.err"  # noqa: S108 - inside the SIPp container
+            err = sh("exec", "-T", e["uac"], "cat", path, check=False, capture=True)
+            print(f"--- SIPp error file for {e['name']} ---")
+            print(err.stdout[-6000:])
     if failed:
         sys.exit(f"SIPp scenarios failed: {failed}")
 
@@ -228,19 +236,28 @@ def main() -> None:
                 run_group(g, scenarios[g])
             time.sleep(3)  # let BYE-time events reach the receipt services
         flush()
-    rc = pytest(groups, args.verbose, "lab/tests", "--ignore=lab/tests/resolution")
-    if rc or "duration_mismatch" not in groups:
+    rc = pytest(
+        groups,
+        args.verbose,
+        "lab/tests",
+        "--ignore=lab/tests/resolution",
+        "--ignore=lab/tests/sidecar",
+    )
+    if rc:
         sys.exit(rc)
-    leaf = resolve_one()
-    flush(rounds=2)
-    sys.exit(
-        pytest(
+    if "duration_mismatch" in groups:
+        leaf = resolve_one()
+        flush(rounds=2)
+        rc = pytest(
             groups,
             args.verbose,
             "lab/tests/resolution",
             env={"DOTS_RESOLVED_DISPUTE": leaf},
         )
-    )
+        if rc:
+            sys.exit(rc)
+    print("== sidecar: Sippy RADIUS accounting from both operators, Call-IDs rewritten by B2BUAs")
+    sys.exit(pytest(groups, args.verbose, "lab/tests/sidecar"))
 
 
 if __name__ == "__main__":

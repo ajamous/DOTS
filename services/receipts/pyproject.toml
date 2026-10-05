@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 dots-receipts = "dots_receipts.__main__:main"
+dots-radius = "dots_receipts.radius:main"
 
 [tool.uv.sources]
 dots-common = { workspace = true }
