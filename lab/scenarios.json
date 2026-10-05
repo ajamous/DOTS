@@ -1,5 +1,5 @@
 {
-  "comment": "SIPp call mixes for the lab. Durations avoid whole seconds so ceil() is stable under jitter: 7400 ms bills 8 s, 10400 ms bills 11 s. Each (orig, term, prefix) is used by exactly one scenario so results can be attributed without call ids. The outage group stops the terminating receipt service during the calls: the originating node must raise signed missing_countersignature disputes and deliver them once the peer is back.",
+  "comment": "SIPp call mixes for the lab. Durations avoid whole seconds so ceil() is stable under jitter: 7400 ms bills 8 s, 10400 ms bills 11 s. Each (orig, term, prefix) is used by exactly one scenario so results can be attributed without call ids. The outage group stops the terminating receipt service during the calls: the originating node must raise signed missing_countersignature disputes and deliver them once the peer is back. The recovery group stops the originating receipt service only briefly: its Kamailio's call-end events are recovered from the durable spool and the calls settle as normal receipts.",
   "groups": {
     "normal": [
       {
@@ -113,6 +113,25 @@
         "kind": "duration_mismatch"
       }
     ],
+    "recovery": [
+      {
+        "name": "c-b-recovery",
+        "uac": "uac-c",
+        "target": "node-c1",
+        "dial": "447712340000",
+        "caller": "14155550101",
+        "calls": 3,
+        "rate": 2,
+        "duration_ms": 10400,
+        "orig": "node-c",
+        "term": "node-b",
+        "prefix": "4477",
+        "expect": "receipt",
+        "billed": 11,
+        "outage": "receipts-c",
+        "outage_seconds": 5
+      }
+    ],
     "outage": [
       {
         "name": "b-c-outage",
@@ -129,7 +148,9 @@
         "expect": "dispute",
         "kind": "missing_countersignature",
         "raised_by": "node-b",
-        "outage": "receipts-c"
+        "outage": "receipts-c",
+        "outage_seconds": 35,
+        "restart_all": true
       }
     ]
   }

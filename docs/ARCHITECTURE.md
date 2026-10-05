@@ -28,10 +28,10 @@ flowchart LR
     KA["Kamailio 6.x<br/>registrar / proxy<br/>secsipid, dialog, tls, dmq"]
     RA["rtpengine"]
     SA["Receipt service<br/>FastAPI"]
-    PA[("Postgres<br/>receipts, disputes,<br/>log, acc CDRs")]
+    PA[("Postgres<br/>receipts, disputes, log;<br/>call-end spool (separate DB)")]
     KA -- "ng control" --> RA
     KA -- "call-end event<br/>http_async_client" --> SA
-    KA -- "acc CDR (backstop)" --> PA
+    KA -- "call-end spool (durable)" --> PA
     SA --- PA
   end
 
@@ -210,7 +210,7 @@ dest_hash     = HMAC-SHA256(k_pair_period, E164 digits, no '+')
 - Both peers derive the same key without exchanging it, and nobody else (including the settlement engine and MCP clients) can reverse `dest_hash`.
 - Both sides normalize the number to E.164 digits *before* hashing. Normalization runs in Kamailio on each side. A normalization disagreement shows up as a `dest_mismatch` dispute instead of a silent split.
 - **Crypto-shredding:** `k_pair_period` is deleted when the dispute window for that period closes (default 30 days after period end). After that, the logged hashes become unlinkable to numbers even for the two peers. The log stays intact, because only the key is destroyed.
-- The full number never leaves Kamailio's local `acc` table, which is the operator's own CDR store with its own retention policy, outside DOTS.
+- The full number never leaves the operator's own network: it exists only in Kamailio's local call-end spool (§8.3), which is the operator's own CDR store with its own retention policy, outside DOTS.
 
 **[Decision]** Accept HMAC with a per-pair, per-period derived key and crypto-shredding, in place of "hash with a per-period salt".
 
@@ -501,7 +501,16 @@ In the lab, operator A runs **two instances** (`node-a1`, `node-a2`) that share 
 
 **Choice: `http_async_client`.** With equal loss semantics, it has fewer moving parts.
 
-Neither transport is durable on its own. The planned durability backstop is `acc` dialog CDRs (`cdr_enable`, `cdrs_table`) in a database separate from the receipt service, reconciled every 60 s. **Status:** not built in Phase 1. A call-end event lost while the receipt service is down is not recovered. The peer's missing-proposal and missing-countersignature disputes make such a loss *visible*, but they do not repair it. This is listed as follow-up work in PLAN.md.
+Neither transport is durable on its own, so every event is also written to a **durable call-end spool** (Phase 2, M6):
+
+- **Write.** In `route[CALL_END]`, Kamailio inserts the exact event JSON into `call_end_spool` in a `kamailio` database on the operator's own Postgres, through `sqlops` `sql_query_async` (async workers, so SIP workers never wait on the database). The JSON is base64-encoded in the script (`{s.encode.base64}`) and decoded by Postgres, so no SIP-controlled value (Call-ID, tags) is ever quoted into SQL text. Kamailio's database role may only `INSERT` into that table.
+- **Read.** The receipt service reconciles from the spool every `reconcile_interval_s` (60 s; 5 s in the lab), with a cursor in its own database. Ingestion is idempotent on `(call_key, direction)`, so events that also arrived over HTTP count as duplicates. A malformed row is logged by id (never by content) and skipped.
+- **Why not `acc`.** The spool carries the same JSON as the HTTP event: millisecond timestamps, attestation, Identity verification, and rtpengine media counts. `acc` dialog CDRs have second-resolution times and none of those fields, so a reconciled `acc` row would bill differently from the same call delivered over HTTP.
+- **Retention.** Rows contain full numbers. They stay in the operator's own database under its own retention policy; the receipt service never writes to or copies from the spool beyond the pseudonymized `LocalCdr`.
+
+The lab proves both sides of the boundary:
+- **Short outage** (`recovery` group): an originating receipt service is stopped during 3 calls and restarted 5 s later. It recovers the events from the spool, and the calls settle as normal receipts.
+- **Long outage** (`outage` group): the window is longer than the peer's countersignature window. The peer's signed `missing_countersignature` disputes stand, and the late-recovered events do not reopen them.
 
 The event JSON is built with `jansson_set` (integers above 2^31 are passed as strings, as the module requires). Fields: `node_id, call_id, from_tag, direction, peer_node, status, sip_code, start_ts, answer_ts, end_ts, src, dst, attestation, identity_verified, media {pkts_in, pkts_out, e2e}`. The full numbers travel only to the local receipt service, which pseudonymizes them on arrival (§6.4).
 

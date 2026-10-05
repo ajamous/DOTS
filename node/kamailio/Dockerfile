@@ -15,7 +15,7 @@ RUN set -eu; apt-get update; \
     fi; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       kamailio kamailio-tls-modules kamailio-secsipid-modules kamailio-json-modules \
-      kamailio-extra-modules kamailio-utils-modules ca-certificates; \
+      kamailio-extra-modules kamailio-utils-modules kamailio-postgres-modules ca-certificates; \
     rm -rf /var/lib/apt/lists/*
 COPY node/kamailio/kamailio.cfg /etc/kamailio/kamailio.cfg
 COPY node/kamailio/entrypoint.sh /usr/local/bin/dots-kamailio

@@ -27,7 +27,8 @@ import json, urllib.request
 t = open('/state/{node}/token').read().strip()
 r = urllib.request.Request('http://127.0.0.1:8080/internal/tick', method='POST',
                            headers={{'authorization': 'Bearer ' + t}})
-print(json.load(urllib.request.urlopen(r, timeout=30))['tree_size'])
+d = json.load(urllib.request.urlopen(r, timeout=30))
+print(d['tree_size'], d.get('spool_recovered', 0))
 """
 
 
@@ -77,22 +78,24 @@ def wait_healthy(services: list[str], timeout: float = 120) -> None:
 
 
 def run_outage(entries: list[dict]) -> None:
-    """Calls while the terminating receipt service is down, then recovery and restarts."""
+    """Calls while a receipt service is down, then recovery (and optionally restarts)."""
     down = sorted({e["outage"] for e in entries})
+    wait = max(e.get("outage_seconds", OUTAGE_WAIT) for e in entries)
     print(f"   stopping {down}")
     sh("stop", *down)
     run_group("outage calls", entries, header=False)
-    print(f"   waiting {OUTAGE_WAIT}s for the countersignature window to expire")
-    time.sleep(OUTAGE_WAIT)
+    print(f"   {', '.join(down)} stays down {wait}s")
+    time.sleep(wait)
     flush(rounds=1, pause=0, skip=set(down))
     print(f"   starting {down}")
     sh("start", *down)
     wait_healthy(down)
     flush(rounds=2)
-    every = list(RECEIPTS.values())
-    print("   restarting every receipt service (log reload from Postgres)")
-    sh("restart", *every)
-    wait_healthy(every)
+    if any(e.get("restart_all") for e in entries):
+        every = list(RECEIPTS.values())
+        print("   restarting every receipt service (log reload from Postgres)")
+        sh("restart", *every)
+        wait_healthy(every)
 
 
 def run_group(name: str, entries: list[dict], header: bool = True) -> None:
@@ -112,18 +115,21 @@ def run_group(name: str, entries: list[dict], header: bool = True) -> None:
 def flush(rounds: int = 4, pause: float = 2.0, skip: set[str] | None = None) -> None:
     for _ in range(rounds):
         sizes = {}
+        spooled = {}
         for node, svc in RECEIPTS.items():
             if skip and svc in skip:
                 continue
             out = sh("exec", "-T", svc, "python", "-c", FLUSH.format(node=node), capture=True)
-            sizes[node] = out.stdout.strip()
-        print("log sizes:", sizes)
+            size, recovered = out.stdout.split()
+            sizes[node] = size
+            spooled[node] = recovered
+        print("log sizes:", sizes, "| recovered from spool:", spooled)
         time.sleep(pause)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--groups", default="normal,short_burst,duration_mismatch,outage")
+    ap.add_argument("--groups", default="normal,short_burst,duration_mismatch,recovery,outage")
     ap.add_argument("--skip-calls", action="store_true", help="only run the assertions")
     ap.add_argument("--verbose", action="store_true", help="list every assertion")
     args = ap.parse_args()
@@ -132,9 +138,9 @@ def main() -> None:
     if not args.skip_calls:
         wait_registered()
         for g in groups:
-            if g == "outage":
+            if any("outage" in e for e in scenarios[g]):
                 flush(rounds=2)
-                print("== outage: " + ", ".join(f"{e['name']} x{e['calls']}" for e in scenarios[g]))
+                print(f"== {g}: " + ", ".join(f"{e['name']} x{e['calls']}" for e in scenarios[g]))
                 run_outage(scenarios[g])
             else:
                 run_group(g, scenarios[g])

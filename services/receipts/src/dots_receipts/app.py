@@ -232,7 +232,11 @@ def internal_app(
 
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
-        return {"node_id": node.node_id, "tree_size": len(node.tree)}
+        return {
+            "node_id": node.node_id,
+            "tree_size": len(node.tree),
+            "spool_recovered": node.spool_recovered,
+        }
 
     @app.post("/internal/call-end", dependencies=[Depends(token)])
     async def call_end(request: Request) -> JSONResponse:
@@ -247,9 +251,13 @@ def internal_app(
 
     @app.post("/internal/tick", dependencies=[Depends(token)])
     async def tick() -> dict[str, Any]:
-        await node.tick(monitor=True, sth=True)
+        await node.tick(monitor=True, sth=True, reconcile=True)
         s = await node.latest_sth()
-        return {"tree_size": len(node.tree), "sth": body(s) if s else None}
+        return {
+            "tree_size": len(node.tree),
+            "spool_recovered": node.spool_recovered,
+            "sth": body(s) if s else None,
+        }
 
     @app.get("/internal/log/{index}", dependencies=[Depends(token)])
     async def log_entry(index: int) -> dict[str, Any]:

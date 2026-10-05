@@ -6,7 +6,7 @@ Independent operators (carriers, PBX owners, voice-agent platforms) run a DOTS n
 
 The ledger proves *what was exchanged and agreed*. It does not route calls, hold presence, or mint anything. There is no token.
 
-> **Status:** Phase 1 complete. The 3-operator lab runs end to end: SIP calls through Kamailio with STIR/SHAKEN, dual-signed receipts in RFC 9162 logs, fraud-gated settlement countersigned by both peers, payouts (fiat invoice, testnet USDC), and a read-only MCP server for agents. Known gaps are listed in [`docs/PLAN.md`](docs/PLAN.md#follow-up-work-known-gaps-not-in-phase-1).
+> **Status:** Phase 1 complete; Phase 2 in progress (see [`docs/PLAN.md`](docs/PLAN.md#phase-2)). The 3-operator lab runs end to end: SIP calls through Kamailio with STIR/SHAKEN, dual-signed receipts in RFC 9162 logs, fraud-gated settlement countersigned by both peers, payouts (fiat invoice, testnet USDC), and a read-only MCP server for agents. Known gaps are listed in [`docs/PLAN.md`](docs/PLAN.md#follow-up-work-known-gaps).
 > See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design, [`docs/PLAN.md`](docs/PLAN.md) for the build plan and [`docs/QA.md`](docs/QA.md) for test evidence.
 
 <p align="center">
@@ -55,10 +55,10 @@ docs/                 Architecture, plan, 2018 paper
 | Federation | 3 operators, 4 Kamailio instances, SIP over mutual TLS, peer identity from certificate CN |
 | STIR/SHAKEN | Identity signed by the originating node and verified by the terminating node (x5u fetch, lab STI-CA) |
 | Replication | `dmq_usrloc` inside operator A's two-instance cluster; every inbound call to A depends on it |
-| Receipts | 81 real calls with G.711 RTP: 73 dual-signed receipts and 8 disputes, each byte-identical in both parties' logs; no full numbers anywhere |
+| Receipts | 84 real calls with G.711 RTP: 76 dual-signed receipts and 8 disputes, each byte-identical in both parties' logs; no full numbers in any receipt or log |
 | Integrity | Inclusion and consistency proofs, peer monitoring, equivocation detection through STH gossip |
 | Disputes | Injected 15 s duration skew becomes `duration_mismatch` disputes, excluded from settlement |
-| Resilience | A receipt service stopped mid-traffic: the peer raises `missing_countersignature` disputes and delivers them on recovery; all receipt services restart with their logs intact |
+| Resilience | Kamailio spools every call-end event durably: a receipt service down for a short while recovers its calls and they settle normally; a longer outage still yields signed `missing_countersignature` disputes; all receipt services restart with their logs intact |
 | Fraud gate | A 40-call short-duration burst is held (`short_burst`, `acd_anomaly`) |
 | Settlement | Per-pair daily statements, recomputed and countersigned by both peers; totals match values computed independently from the scenario file |
 | Payouts | Invoice records and signed (not broadcast) Base Sepolia USDC transfers |

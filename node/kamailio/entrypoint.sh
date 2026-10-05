@@ -5,15 +5,17 @@
 #   DOTS_DMQ_PEERS     other instances of this operator (host names), may be empty
 #   DOTS_RTPENGINE     rtpengine host name
 #   DOTS_RECEIPTS_URL  internal URL of the local receipt service
+#   DOTS_SPOOL_DB_URL  postgres://user:pass@host/db for the durable call-end spool
+#   DOTS_LISTEN_IP     SIP address (needed when the container is on several networks)
 set -eu
-: "${DOTS_NODE_ID:?}" "${DOTS_ACCESS_NET:?}" "${DOTS_RTPENGINE:?}" "${DOTS_RECEIPTS_URL:?}"
+: "${DOTS_NODE_ID:?}" "${DOTS_ACCESS_NET:?}" "${DOTS_RTPENGINE:?}" "${DOTS_RECEIPTS_URL:?}" "${DOTS_SPOOL_DB_URL:?}"
 STATE=/state/$DOTS_NODE_ID
 
 for i in $(seq 1 60); do [ -f /state/bootstrap.done ] && break; sleep 1; done
 [ -f /state/bootstrap.done ] || { echo "lab state missing" >&2; exit 1; }
 
 resolve() { getent ahostsv4 "$1" | awk 'NR==1{print $1}'; }
-MY_IP=$(hostname -i | awk '{print $1}')
+MY_IP=${DOTS_LISTEN_IP:-$(hostname -i | awk '{print $1}')}
 RTP_IP=""
 for i in $(seq 1 30); do RTP_IP=$(resolve "$DOTS_RTPENGINE") && [ -n "$RTP_IP" ] && break; sleep 1; done
 NOTIFY="sip:$MY_IP:5061;transport=tls"
@@ -34,6 +36,7 @@ alias="$(hostname)"
 #!substdef "!DOTS_DMQ_NOTIFY!$NOTIFY!g"
 #!substdef "!DOTS_RTPENGINE_SOCK!udp:$RTP_IP:2223!g"
 #!substdef "!DOTS_RECEIPTS_URL!$DOTS_RECEIPTS_URL!g"
+#!substdef "!DOTS_SPOOL_DB_URL!$DOTS_SPOOL_DB_URL!g"
 #!substdef "!DOTS_INTERNAL_TOKEN!$(cat "$STATE/token")!g"
 CFG
 cp "$STATE/kamailio/node.cfg" /etc/kamailio/node.cfg

@@ -135,6 +135,8 @@ class ReceiptNode:
         self._pair_keys: dict[str, bytes] = {}
         self._last_sth_ms = 0
         self._last_monitor_ms = 0
+        self._last_reconcile_ms = 0
+        self.spool_recovered = 0  # events recovered from the spool since start
 
     # ------------------------------------------------------------------ setup
 
@@ -319,6 +321,61 @@ class ReceiptNode:
             )
             row = await cur.fetchone()
         return LocalCdr.model_validate(row["cdr"]) if row else None
+
+    async def reconcile_spool(self) -> dict[str, int]:
+        """Ingest call-end events from Kamailio's durable spool (§8.3).
+
+        The spool is append-only and ordered by id; a cursor in our own
+        database records how far it has been read. Ingestion is idempotent,
+        so events that already arrived over HTTP are counted as duplicates.
+        A malformed row is skipped and logged, never retried forever.
+        """
+        stats = {"read": 0, "ingested": 0, "duplicate": 0, "rejected": 0}
+        url = self.s.spool_database_url
+        if not url:
+            return stats
+        async with self.db().connection() as conn:
+            cur = await conn.execute("SELECT last_id FROM spool_cursor WHERE source = 'kamailio'")
+            row = await cur.fetchone()
+        last = int(row["last_id"]) if row else 0
+        try:
+            async with await psycopg.AsyncConnection.connect(
+                url, row_factory=dict_row, connect_timeout=3
+            ) as spool:
+                cur2 = await spool.execute(
+                    "SELECT id, payload FROM call_end_spool WHERE id > %s ORDER BY id LIMIT %s",
+                    (last, self.s.reconcile_batch),
+                )
+                rows = await cur2.fetchall()
+        except psycopg.Error as exc:
+            log.warning("%s: spool unavailable: %s", self.node_id, exc)
+            return stats
+        for r in rows:
+            stats["read"] += 1
+            try:
+                event = CallEnd.model_validate(r["payload"])
+                result = await self.ingest(event)
+                stats["duplicate" if result["status"] == "duplicate" else "ingested"] += 1
+            except (ValueError, ProtocolError) as exc:
+                stats["rejected"] += 1
+                # never log the payload: it carries full numbers
+                log.warning(
+                    "%s: spool row %s rejected: %s", self.node_id, r["id"], type(exc).__name__
+                )
+            last = int(r["id"])
+            async with self.db().connection() as conn:
+                await conn.execute(
+                    "INSERT INTO spool_cursor (source, last_id, updated_ms) VALUES"
+                    " ('kamailio', %s, %s) ON CONFLICT (source) DO UPDATE"
+                    " SET last_id = EXCLUDED.last_id, updated_ms = EXCLUDED.updated_ms",
+                    (last, self.clock()),
+                )
+        self.spool_recovered += stats["ingested"]
+        if stats["ingested"]:
+            log.info(
+                "%s: recovered %d call-end events from the spool", self.node_id, stats["ingested"]
+            )
+        return stats
 
     # ------------------------------------------------------------------ terminating side
 
@@ -869,8 +926,21 @@ class ReceiptNode:
 
     # ------------------------------------------------------------------ scheduling
 
-    async def tick(self, *, monitor: bool | None = None, sth: bool | None = None) -> None:
+    async def tick(
+        self,
+        *,
+        monitor: bool | None = None,
+        sth: bool | None = None,
+        reconcile: bool | None = None,
+    ) -> None:
         """One pass of all periodic work. ``None`` means 'when due'."""
+        now0 = self.clock()
+        if reconcile or (
+            reconcile is None
+            and now0 - self._last_reconcile_ms >= self.s.reconcile_interval_s * 1000
+        ):
+            await self.reconcile_spool()
+            self._last_reconcile_ms = now0
         await self._expire()
         await self._deliver_outbox()
         await self._deliver_disputes()
