@@ -280,6 +280,8 @@ class ReceiptNode:
             raise ValueError("event addressed to another node")
         if not self.is_node_peer(event.peer_node):
             raise ProtocolError("unknown_peer", event.peer_node)
+        if event.upstream_peer is not None and not self.is_node_peer(event.upstream_peer):
+            raise ProtocolError("unknown_peer", event.upstream_peer)
         event = self._apply_lab_skew(event)
         ts = event.answer_ts if event.answer_ts is not None else event.start_ts
         table = self.tables.for_pair(self.node_id, event.peer_node, period_of(ts))

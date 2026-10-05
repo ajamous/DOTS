@@ -211,6 +211,32 @@ def kamailio_node_cfg(node: str, topo: dict[str, Any]) -> str:
         lines.append("\t\t$var(peer_ok) = 1;")
         lines.append("\t}")
     lines.append("}")
+    transit: dict[str, Any] = topo.get("transit", {})
+    via = sorted(transit.get("routes", {}).get(node, {}).items(), key=lambda x: (-len(x[0]), x[0]))
+    lines += [
+        "",
+        "# Transit routes: $var(num) -> $var(via), the peer that carries it onward.",
+        "route[DOTS_VIA] {",
+        '\t$var(via) = "";',
+    ]
+    for i, (prefix, carrier) in enumerate(via):
+        kw = "if" if i == 0 else "} else if"
+        lines.append(f'\t{kw} ($var(num) =~ "^{prefix}") {{')
+        lines.append(f'\t\t$var(via) = "{carrier}";')
+    if via:
+        lines.append("\t}")
+    lines += [
+        "}",
+        "",
+        "# Upstream peers whose calls this node carries in transit: $var(transit_ok).",
+        "route[DOTS_TRANSIT] {",
+        "\t$var(transit_ok) = 0;",
+    ]
+    for upstream in transit.get("carries", {}).get(node, []):
+        lines.append(f'\tif ($var(peer) == "{upstream}") {{')
+        lines.append("\t\t$var(transit_ok) = 1;")
+        lines.append("\t}")
+    lines.append("}")
     return "\n".join(lines) + "\n"
 
 

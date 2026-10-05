@@ -381,3 +381,45 @@ def test_resolution_request_checks(
         check_resolution_request(
             keyring, ResolutionRequest(dispute=bad, proposal=req.proposal), T0, 30
         )
+
+
+# ----------------------------------------------------------------------------
+# Transit (§5.8)
+
+
+def test_ordinary_proposal_bytes_have_no_transit_field(
+    idents: dict[str, NodeIdentity], table_ab: SignedRateTable
+) -> None:
+    sp, _ = happy(idents, table_ab)
+    assert "transit_of" not in body(sp.proposal)
+
+
+def test_transit_leg_links_upstream_call_under_signature(
+    idents: dict[str, NodeIdentity], keyring: Keyring, table_ab: SignedRateTable
+) -> None:
+    from dots_common.models import CallEnd, call_key
+
+    ev = call("out", "node-a", "node-b")
+    leg = CallEnd.model_validate({**body(ev), "upstream_peer": "node-c"})
+    cdr = local_cdr("node-a", leg, table_ab, pk(idents, "node-a", "node-b"))
+    assert cdr.transit_of == call_key("node-c", "c1@a", "ft1")
+    sp = make_proposal(idents["node-a"], cdr)
+    assert sp.proposal.transit_of == cdr.transit_of
+    assert verify_proposal(keyring, sp)
+    rb = check_against_cdr(
+        sp, in_cdr(idents, table_ab), Tolerances(), idents["node-b"].signing.key_id
+    )
+    sr = countersign(idents["node-b"], rb)
+    assert verify_receipt(keyring, sr) == []
+    # the link is covered by the originator's signature
+    moved = sp.proposal.model_copy(update={"transit_of": "AAAA"})
+    assert not verify_proposal(keyring, sp.model_copy(update={"proposal": moved}))
+
+
+def test_upstream_peer_only_on_outbound_leg() -> None:
+    from dots_common.models import CallEnd
+
+    with pytest.raises(ValueError, match="upstream_peer"):
+        CallEnd.model_validate({**body(call("in", "node-b", "node-a")), "upstream_peer": "node-c"})
+    with pytest.raises(ValueError, match="upstream_peer"):
+        CallEnd.model_validate({**body(call("out", "node-a", "node-b")), "upstream_peer": "node-b"})

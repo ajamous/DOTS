@@ -55,9 +55,10 @@ docs/                 Architecture, plan, 2018 paper
 | Federation | 3 operators, 4 Kamailio instances, SIP over mutual TLS, peer identity from certificate CN |
 | STIR/SHAKEN | Identity signed by the originating node and verified by the terminating node (x5u fetch, lab STI-CA) |
 | Replication | `dmq_usrloc` inside operator A's two-instance cluster; every inbound call to A depends on it |
-| Receipts | 88 real G.711 calls (4 of them SRTP): 80 dual-signed receipts and 8 disputes, each byte-identical in both parties' logs; no full numbers in any receipt or log |
+| Receipts | 92 real G.711 calls (4 of them SRTP, 4 in transit): 88 dual-signed receipts and 8 disputes, each byte-identical in both parties' logs; no full numbers in any receipt or log |
 | Integrity | Inclusion and consistency proofs, peer monitoring, equivocation detection through STH gossip |
 | SRTP | SDES-SRTP calls cross both nodes end to end: rtpengine forwards the endpoints' keys unchanged and relays without decrypting, while still counting packets. Both nodes report `e2e`; plain RTP calls never do |
+| Transit | node-a reaches node-c's numbers through node-b: one dual-signed receipt per hop (A→B, B→C), the onward one linked to the upstream leg under node-b's signature, and node-c verifies node-a's attestation |
 | Disputes | Injected 15 s duration skew becomes `duration_mismatch` disputes, excluded from settlement. One is then resolved by the operators (re-proposal, approval of the concession): the resolution receipt lands in both logs and a supplementary statement pays exactly that call |
 | Resilience | Kamailio spools every call-end event durably: a receipt service down for a short while recovers its calls and they settle normally; a longer outage still yields signed `missing_countersignature` disputes; all receipt services restart with their logs intact |
 | Fraud gate | A 40-call short-duration burst is held (`short_burst`, `acd_anomaly`) |

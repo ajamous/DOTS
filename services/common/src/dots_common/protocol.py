@@ -107,6 +107,11 @@ def local_cdr(
         rate_id=entry.rate_id if entry else None,
         attestation=attestation_seen(event),  # type: ignore[arg-type]
         media=event.media,
+        transit_of=(
+            call_key(event.upstream_peer, event.call_id, event.from_tag)
+            if event.upstream_peer
+            else None
+        ),
     )
 
 
@@ -133,6 +138,7 @@ def make_proposal(ident: NodeIdentity, cdr: LocalCdr) -> SignedProposal:
         rate_id=cdr.rate_id,
         attestation=cdr.attestation,
         orig_key_id=ident.signing.key_id,
+        transit_of=cdr.transit_of,
     )
     return SignedProposal(
         proposal=proposal, sig_orig=ident.signing.sign(Context.PROPOSAL, body(proposal))
