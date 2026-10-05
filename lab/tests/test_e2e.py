@@ -152,3 +152,17 @@ def test_registry_is_signed_and_resists_appended_forgeries(tmp_path: Any) -> Non
     )
     v2 = verify_registry(tampered, anchors)
     assert {p.node_id: p.ranges for p in v2.accepted.peers} == honest
+
+
+def test_tls_certificate_bound_to_signer(client: DotsClient) -> None:
+    from pathlib import Path
+
+    from dots_common.identity import NodeIdentity, sign_request
+
+    # The observer's own certificate and signature: accepted
+    assert client.get("node-b", "/v1/sth")["sth"]["log_id"] == "node-b"
+    # The observer's TLS certificate, but a request signed with node-a's key: refused
+    node_a = NodeIdentity.load("node-a", Path("/state/node-a/keys"))
+    req = client.http.build_request("GET", client.url("node-b") + "/v1/sth")
+    req.headers.update(sign_request(node_a, "GET", req.url.raw_path.decode(), b""))
+    assert client.http.send(req).status_code == 403

@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     reconcile_interval_s: float = 60.0
     reconcile_batch: int = 1000
 
+    # Require the TLS client certificate to match the signer's registry entry
+    require_tls_binding: bool = False
+
     # Inbound
     listen_host: str = "0.0.0.0"  # noqa: S104 - containerized service
     listen_port: int = 8443

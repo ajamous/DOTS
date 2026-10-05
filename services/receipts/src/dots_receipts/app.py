@@ -12,12 +12,13 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from dots_common.b64 import unb64u
-from dots_common.identity import verify_request
+from dots_common.identity import Keyring, verify_request
 from dots_common.models import CallEnd, SignedDispute, SignedProposal, body
 from dots_common.protocol import ProtocolError
 from dots_common.settlement import SignedStatement
 
 from .node import ReceiptNode, parse_entry
+from .tlsbind import client_cert_sha256
 
 MAX_ENTRIES = 1000
 
@@ -28,21 +29,35 @@ def _path_with_query(request: Request) -> str:
     return (raw + (b"?" + qs if qs else b"")).decode("ascii")
 
 
+async def authenticate(request: Request, keyring: Keyring, require_tls_binding: bool) -> str:
+    """Authenticate a peer request: Ed25519 request signature, bound to the TLS cert.
+
+    The signature names the caller; with ``require_tls_binding`` the client
+    certificate presented on the TLS connection must also be the one the
+    signed registry records for that caller (``tls_cert_sha256``). Holding a
+    node's signing key without its certificate, or presenting a node's
+    certificate while signing as another node, is refused.
+    """
+    payload = await request.body()
+    who = verify_request(
+        keyring, dict(request.headers), request.method, _path_with_query(request), payload
+    )
+    if who is None:
+        raise HTTPException(401, "bad or missing request signature")
+    if require_tls_binding:
+        peer = keyring.peer(who)
+        expected = (peer.tls_cert_sha256 or "").lower() if peer else ""
+        presented = client_cert_sha256(request.scope)
+        if not expected or presented is None or not hmac.compare_digest(presented, expected):
+            raise HTTPException(403, "client certificate does not belong to the signer")
+    return who
+
+
 def peer_app(node: ReceiptNode) -> FastAPI:
     app = FastAPI(title=f"DOTS receipts ({node.node_id})", docs_url=None, redoc_url=None)
 
     async def caller(request: Request) -> str:
-        payload = await request.body()
-        who = verify_request(
-            node.keyring,
-            dict(request.headers),
-            request.method,
-            _path_with_query(request),
-            payload,
-        )
-        if who is None:
-            raise HTTPException(401, "bad or missing request signature")
-        return who
+        return await authenticate(request, node.keyring, node.s.require_tls_binding)
 
     Caller = Annotated[str, Depends(caller)]
 

@@ -61,6 +61,7 @@ x-receipts-env: &receipts-env
   DOTS_MONITOR_INTERVAL_S: "5"
   DOTS_COUNTERSIG_WINDOW_S: "30"
   DOTS_RECONCILE_INTERVAL_S: "5"
+  DOTS_REQUIRE_TLS_BINDING: "true"
   DOTS_LAB_MODE: "true"
 
 x-kamailio: &kamailio
