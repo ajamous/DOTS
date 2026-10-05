@@ -3,8 +3,10 @@
 <!--
   DOTS lab callee (the operator's PBX): answers every INVITE and echoes the
   media. Plain RTP offers are echoed by -rtp_echo on [media_port]. SDES-SRTP
-  offers (RTP/SAVP) are answered with SRTP and this PBX's own key, and echoed
-  by SIPp's SRTP engine (decrypt with the caller's key, re-encrypt with ours).
+  offers (RTP/SAVP) are answered with SRTP and this PBX's own key; after the
+  ACK the PBX streams its own SRTP pattern (SIPp 3.7.7's UAS rtp_echo action
+  hangs). Branches jump on the send elements themselves: a <nop> right after
+  a retransmitted send can miss the ACK.
 -->
 <scenario name="DOTS lab UAS">
   <recv request="INVITE" crlf="true">
@@ -13,7 +15,7 @@
     </action>
   </recv>
 
-  <send>
+  <send test="srtp" next="srtp">
     <![CDATA[
       SIP/2.0 180 Ringing
       [last_Via:]
@@ -27,9 +29,7 @@
     ]]>
   </send>
 
-  <nop test="srtp" next="srtp"/>
-
-  <send retrans="500">
+  <send retrans="500" next="answered">
     <![CDATA[
       SIP/2.0 200 OK
       [last_Via:]
@@ -52,8 +52,6 @@
       a=sendrecv
     ]]>
   </send>
-
-  <nop next="answered"/>
 
   <label id="srtp"/>
   <send retrans="500">
@@ -83,13 +81,11 @@
 
   <recv request="ACK" rtd="true" crlf="true"/>
 
-  <nop>
+  <nop next="bye">
     <action>
       <exec rtp_stream="apattern,1,8,PCMA/8000"/>
     </action>
   </nop>
-
-  <nop next="bye"/>
 
   <label id="answered"/>
 
