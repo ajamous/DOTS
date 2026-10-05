@@ -21,14 +21,14 @@ from dots_common.protocol import verify_receipt
 from dots_common.settlement import SignedStatement
 from dots_common.signing import Context
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = Path(__file__).resolve().parents[2]  # lab/
 LEAF = os.environ.get("DOTS_RESOLVED_DISPUTE", "")
 pytestmark = pytest.mark.skipif(not LEAF, reason="run through lab/run_e2e.py")
 
 
 @pytest.fixture(scope="module")
 def skew() -> dict[str, Any]:
-    groups = json.loads((ROOT / "lab/scenarios.json").read_text())["groups"]
+    groups = json.loads((ROOT / "scenarios.json").read_text())["groups"]
     return next(e for e in groups["duration_mismatch"] if e["name"] == "a-c-skew")
 
 
@@ -88,7 +88,7 @@ def test_listed_as_resolved(client: DotsClient) -> None:
 
 
 def test_supplementary_statement(client: DotsClient) -> None:
-    topo = json.loads((ROOT / "lab/topology.json").read_text())
+    topo = json.loads((ROOT / "topology.json").read_text())
     out = settlement_post(client, "/v1/supplementary", force="true")
     assert [s["pair"] for s in out["statements"]] == [["node-a", "node-c"]]
     sid = out["statements"][0]["id"]
