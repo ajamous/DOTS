@@ -51,7 +51,7 @@ def test_high_risk_prefix(world: World) -> None:
 
 def test_asr_anomaly(world: World) -> None:
     rs = [world.receipt("node-a", "+447700900123", 30_400)]
-    out = verdicts(LocalRules(), rs, asr={("node-a", "447700"): (100, 5)})
+    out = verdicts(LocalRules(), rs, asr={("node-a", "node-b", "447700"): (100, 5)})
     assert out[0].verdict == "hold"
     assert "asr_anomaly" in out[0].reasons
 
@@ -81,3 +81,46 @@ def test_ovs_stub_fails_closed(world: World) -> None:
     assert s.verdict == "hold"
     assert s.reasons == ("ovs_unavailable",)
     assert build_gate().name == "local_rules@1"
+
+
+def _route_calls(world: World, n: int, dur_ms: int, dst: str = "+447700900123"):  # type: ignore[no-untyped-def]
+    return [world.receipt("node-a", dst, dur_ms, at=T0 + 3_600_000 + i * 61_000) for i in range(n)]
+
+
+def test_acd_against_route_baseline(world: World) -> None:
+    from dots_settlement.fraud import Baseline
+
+    rs = _route_calls(world, 25, 12_400)  # ACD 13 s: fine in absolute terms
+    route = ("node-a", "node-b", "447700")
+    assert {s.verdict for s in verdicts(LocalRules(), rs)} == {"pass"}
+    # but this route usually runs 180 s calls: 13 s is a collapse
+    base = {route: Baseline(days=7, calls_per_day=25, acd=180.0, asr=0.6)}
+    out = verdicts(LocalRules(), rs, baselines=base)
+    assert all("acd_anomaly" in s.reasons for s in out)
+    # too little history: the absolute rule applies instead
+    thin = {route: Baseline(days=2, calls_per_day=25, acd=180.0, asr=0.6)}
+    assert {s.verdict for s in verdicts(LocalRules(), rs, baselines=thin)} == {"pass"}
+
+
+def test_asr_against_route_baseline(world: World) -> None:
+    from dots_settlement.fraud import Baseline
+
+    rs = _route_calls(world, 3, 30_400)
+    route = ("node-a", "node-b", "447700")
+    asr = {route: (100, 30)}  # 30%: above the absolute 20% floor
+    assert verdicts(LocalRules(), rs, asr=asr)[0].verdict == "pass"
+    base = {route: Baseline(days=7, calls_per_day=50, acd=60.0, asr=0.7)}
+    out = verdicts(LocalRules(), rs, asr=asr, baselines=base)
+    assert "asr_anomaly" in out[0].reasons  # below half the usual 70%
+
+
+def test_volume_spike(world: World) -> None:
+    from dots_settlement.fraud import Baseline
+
+    rs = _route_calls(world, 60, 30_400)
+    route = ("node-a", "node-b", "447700")
+    base = {route: Baseline(days=7, calls_per_day=10, acd=30.0, asr=0.6)}
+    out = verdicts(LocalRules(), rs, baselines=base)
+    assert all("volume_spike" in s.reasons for s in out)
+    usual = {route: Baseline(days=7, calls_per_day=50, acd=30.0, asr=0.6)}
+    assert all("volume_spike" not in s.reasons for s in verdicts(LocalRules(), rs, baselines=usual))

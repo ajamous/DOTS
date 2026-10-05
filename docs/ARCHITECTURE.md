@@ -400,6 +400,13 @@ class FraudGate(Protocol):
 | `duration_skew` | Systematic within-tolerance bias of term over orig durations (padding, FAS-like) | hold |
 | `no_media` | rtpengine reported zero RTP packets in one direction on an answered call | hold |
 
+**Per-route baselines (Phase 2, M9).** The engine records each settled period's metrics per route `(orig, term, prefix)`: calls, agreed seconds, attempts, answered. When a route has at least 3 days of history in the trailing 7, its own baseline replaces the fixed thresholds:
+- `acd_anomaly` fires when today's ACD falls below half the route's usual.
+- `asr_anomaly` fires when today's ASR falls below half the route's usual.
+- `volume_spike` (new) fires when today's calls exceed 5× the route's usual daily volume and at least 50 calls, the signature of traffic pumping.
+
+Routes without history keep the absolute thresholds. Re-running a period replaces its metrics rather than counting them twice.
+
 Hard duration mismatches never reach the gate: they are disputes at receipt time (§5.4). The gate's `duration_skew` rule covers the subtler case, where every call passes the tolerance but is skewed in the same direction.
 
 `no_media` uses a local, unsigned signal from the originating node (rtpengine stats on the call-end event). It is not part of the receipt, because media stats are not agreed facts.
