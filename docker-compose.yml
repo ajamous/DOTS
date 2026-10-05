@@ -41,7 +41,11 @@ x-pg: &pg
     POSTGRES_DB: dots
   volumes: ["./lab/postgres:/docker-entrypoint-initdb.d:ro"]
   healthcheck:
-    test: ["CMD", "pg_isready", "-U", "dots"]
+    # Over TCP and against the kamailio (spool) database: during first-run
+    # init the image runs a temporary server on the Unix socket only, which a
+    # plain pg_isready reports as ready, and then restarts it. Kamailio's
+    # spool connection must not land in that window.
+    test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "dots", "-d", "kamailio"]
     interval: 2s
     retries: 30
 
