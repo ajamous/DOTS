@@ -18,7 +18,8 @@ x-kamailio-image: &kamailio-image
   image: dots-kamailio:dev
   build:
     context: .
-    dockerfile: node/kamailio/Dockerfile
+    # KAMAILIO_DOCKERFILE=node/kamailio/Dockerfile.upstream: Kamailio 6.1 image
+    dockerfile: ${KAMAILIO_DOCKERFILE:-node/kamailio/Dockerfile}
 
 x-rtpengine-image: &rtpengine-image
   image: dots-rtpengine:dev

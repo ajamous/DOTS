@@ -55,3 +55,27 @@ jobs:
         if: always()
         run: docker compose --profile test down -v
 
+
+  lab-kamailio61:
+    name: Lab end to end on Kamailio 6.1 (official image)
+    runs-on: ubuntu-latest
+    needs: python
+    timeout-minutes: 30
+    env:
+      KAMAILIO_DOCKERFILE: node/kamailio/Dockerfile.upstream
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: docker compose --profile test build
+      - name: Kamailio version
+        run: docker run --rm --entrypoint kamailio dots-kamailio:dev -v
+      - name: Start lab
+        run: docker compose up -d --wait
+      - name: End-to-end scenarios
+        run: python3 lab/run_e2e.py
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 300
+      - name: Tear down
+        if: always()
+        run: docker compose --profile test down -v
