@@ -57,7 +57,7 @@ docs/                 Architecture, plan, 2018 paper
 | Replication | `dmq_usrloc` inside operator A's two-instance cluster; every inbound call to A depends on it |
 | Receipts | 84 real calls with G.711 RTP: 76 dual-signed receipts and 8 disputes, each byte-identical in both parties' logs; no full numbers in any receipt or log |
 | Integrity | Inclusion and consistency proofs, peer monitoring, equivocation detection through STH gossip |
-| Disputes | Injected 15 s duration skew becomes `duration_mismatch` disputes, excluded from settlement |
+| Disputes | Injected 15 s duration skew becomes `duration_mismatch` disputes, excluded from settlement. One is then resolved by the operators (re-proposal, approval of the concession): the resolution receipt lands in both logs and a supplementary statement pays exactly that call |
 | Resilience | Kamailio spools every call-end event durably: a receipt service down for a short while recovers its calls and they settle normally; a longer outage still yields signed `missing_countersignature` disputes; all receipt services restart with their logs intact |
 | Fraud gate | A 40-call short-duration burst is held (`short_burst`, `acd_anomaly`) |
 | Settlement | Per-pair daily statements, recomputed and countersigned by both peers; totals match values computed independently from the scenario file |

@@ -10,7 +10,15 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from .b64 import b64u
 from .jcs import canonical
@@ -184,6 +192,9 @@ class ReceiptBody(Strict):
     term_attestation_verified: Attestation
     agreed_billed_seconds: Seconds
     term_key_id: KeyId
+    # Leaf hash of the dispute this receipt resolves (ARCHITECTURE.md §5.7).
+    # Absent, not null, on ordinary receipts so their signed bytes are unchanged.
+    resolves: B64 | None = None
 
     @model_validator(mode="after")
     def _agreed(self) -> "ReceiptBody":
@@ -192,6 +203,13 @@ class ReceiptBody(Strict):
         ):
             raise ValueError("agreed_billed_seconds must be min(orig, term)")
         return self
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_resolves(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        if data.get("resolves") is None:
+            data.pop("resolves", None)
+        return data
 
 
 class SignedReceipt(Strict):

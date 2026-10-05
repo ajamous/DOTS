@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     countersig_window_s: int = 300
     retry_interval_s: float = 2.0
 
+    # Dispute resolution (decision D2: 30 days after the period ends)
+    dispute_window_days: int = 30
+    resolution_retry_s: float = 60.0
+
     # Log publication and monitoring
     sth_interval_s: float = 10.0
     sth_max_age_s: float = 300.0

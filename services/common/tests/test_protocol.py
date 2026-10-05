@@ -14,12 +14,17 @@ from dots_common.models import (
 )
 from dots_common.protocol import (
     ProtocolError,
+    ResolutionRefused,
+    ResolutionRequest,
     Tolerances,
     check_against_cdr,
+    check_resolution_request,
     countersign,
+    dispute_leaf,
     local_cdr,
     make_dispute,
     make_proposal,
+    resolve_against_cdr,
     verify_dispute,
     verify_proposal,
     verify_rate_table,
@@ -281,3 +286,98 @@ def test_no_rate_no_proposal(idents: dict[str, NodeIdentity], table_ab: SignedRa
 def test_cdr_has_no_number(idents: dict[str, NodeIdentity], table_ab: SignedRateTable) -> None:
     cdr = out_cdr(idents, table_ab)
     assert "447700900123" not in cdr.model_dump_json()
+
+
+# ----------------------------------------------------------------------------
+# Dispute resolution (§5.7)
+
+
+def _disputed(idents, table, term_dur_ms):  # type: ignore[no-untyped-def]
+    sp = make_proposal(idents["node-a"], out_cdr(idents, table))
+    cdr = in_cdr(idents, table, dur_ms=term_dur_ms)
+    with pytest.raises(ProtocolError):
+        check_against_cdr(sp, cdr, Tolerances(), idents["node-b"].signing.key_id)
+    sd = make_dispute(
+        idents["node-b"],
+        kind="duration_mismatch",
+        call_id="c1@a",
+        from_tag="ft1",
+        orig_node="node-a",
+        term_node="node-b",
+        period="2026-01-01",
+        now_ms=T0,
+        proposal=sp,
+    )
+    return ResolutionRequest(dispute=sd, proposal=sp), cdr
+
+
+def test_ordinary_receipt_bytes_have_no_resolves_field(
+    idents: dict[str, NodeIdentity], table_ab: SignedRateTable
+) -> None:
+    _, sr = happy(idents, table_ab)
+    assert "resolves" not in body(sr.receipt)
+    assert b"resolves" not in jcs.canonical(body(sr))
+
+
+def test_resolution_receipt_binds_the_dispute(
+    idents: dict[str, NodeIdentity], keyring: Keyring, table_ab: SignedRateTable
+) -> None:
+    req, cdr = _disputed(idents, table_ab, 48_100)  # B: 49 s, A: 64 s
+    check_resolution_request(keyring, req, T0, 30)
+    rb = resolve_against_cdr(
+        req, cdr, Tolerances(), idents["node-b"].signing.key_id, approved=False
+    )
+    sr = countersign(idents["node-b"], rb)
+    assert verify_receipt(keyring, sr) == []
+    assert sr.receipt.resolves == dispute_leaf(req.dispute)
+    assert sr.receipt.agreed_billed_seconds == 49
+    # pointing the receipt at another dispute breaks B's signature
+    moved = SignedReceipt(
+        receipt=sr.receipt.model_copy(update={"resolves": "AAAA"}), sig_term=sr.sig_term
+    )
+    assert verify_receipt(keyring, moved) == ["bad term signature"]
+    again = SignedReceipt.model_validate_json(sr.model_dump_json())
+    assert jcs.canonical(body(again)) == jcs.canonical(body(sr))
+
+
+def test_resolution_concessions_need_approval(
+    idents: dict[str, NodeIdentity], table_ab: SignedRateTable
+) -> None:
+    kid = idents["node-b"].signing.key_id
+    req, cdr = _disputed(idents, table_ab, 78_100)  # B: 79 s > A: 64 s
+    with pytest.raises(ResolutionRefused) as exc:
+        resolve_against_cdr(req, cdr, Tolerances(), kid, approved=False)
+    assert exc.value.needs_approval
+    rb = resolve_against_cdr(req, cdr, Tolerances(), kid, approved=True)
+    assert (rb.term_billed_seconds, rb.agreed_billed_seconds) == (79, 64)
+    # no CDR at all: only with approval, on the originator's figures
+    with pytest.raises(ResolutionRefused):
+        resolve_against_cdr(req, None, Tolerances(), kid, approved=False)
+    rb = resolve_against_cdr(req, None, Tolerances(), kid, approved=True)
+    assert rb.term_billed_seconds == rb.agreed_billed_seconds == 64
+    assert rb.term_attestation_verified == "none"
+    # a different destination is a concession too
+    other = in_cdr(idents, table_ab, dur_ms=48_000, dst="+447700900999")
+    with pytest.raises(ResolutionRefused, match="destination"):
+        resolve_against_cdr(req, other, Tolerances(), kid, approved=False)
+
+
+def test_resolution_request_checks(
+    idents: dict[str, NodeIdentity], keyring: Keyring, table_ab: SignedRateTable
+) -> None:
+    req, _ = _disputed(idents, table_ab, 78_100)
+    with pytest.raises(ResolutionRefused, match="window"):
+        check_resolution_request(keyring, req, T0 + 32 * 86_400_000, 30)
+    check_resolution_request(keyring, req, T0 + 30 * 86_400_000, 30)
+    other = make_proposal(idents["node-a"], out_cdr(idents, table_ab, call_id="c2@a"))
+    with pytest.raises(ResolutionRefused, match="another call"):
+        check_resolution_request(
+            keyring, ResolutionRequest(dispute=req.dispute, proposal=other), T0, 30
+        )
+    bad = req.dispute.model_copy(
+        update={"dispute": req.dispute.dispute.model_copy(update={"kind": "bad_signature"})}
+    )
+    with pytest.raises(ResolutionRefused, match="not resolvable"):
+        check_resolution_request(
+            keyring, ResolutionRequest(dispute=bad, proposal=req.proposal), T0, 30
+        )

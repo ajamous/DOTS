@@ -39,13 +39,20 @@ from dots_common.models import (
     period_of,
 )
 from dots_common.protocol import (
+    RESOLVABLE,
     ProtocolError,
+    ResolutionRefused,
+    ResolutionRequest,
     Tolerances,
     check_against_cdr,
+    check_resolution_request,
     countersign,
+    dispute_leaf,
+    in_dispute_window,
     local_cdr,
     make_dispute,
     make_proposal,
+    resolve_against_cdr,
     verify_dispute,
     verify_proposal,
     verify_receipt,
@@ -214,18 +221,31 @@ class ReceiptNode:
         )
         return idx
 
-    async def _record(self, entry: Entry, *, outcome: bool = True) -> int:
-        """Append an entry and (optionally) make it the call's outcome, atomically."""
+    async def _record(
+        self, entry: Entry, *, outcome: bool = True, resolves: str | None = None
+    ) -> int:
+        """Append an entry and (optionally) make it the call's outcome, atomically.
+
+        ``resolves``: the dispute (leaf hash) this receipt settles; the link is
+        stored in the same transaction as the append.
+        """
         async with self.lock, self.db().connection() as conn:
             # The in-memory tree is extended only after the transaction commits.
             async with conn.transaction():
                 idx = await self._append(conn, entry)
+                ck, period, orig, term, _ = entry_parties(entry)
                 if outcome:
-                    ck = entry_parties(entry)[0]
                     await conn.execute(
                         "INSERT INTO outcomes (call_key, kind, leaf_idx) VALUES (%s,%s,%s)"
                         " ON CONFLICT DO NOTHING",
                         (ck, entry_kind(entry), idx),
+                    )
+                if resolves is not None:
+                    await conn.execute(
+                        "INSERT INTO resolutions (dispute_leaf, call_key, receipt_leaf, period,"
+                        " orig_node, term_node, created_ms) VALUES (%s,%s,%s,%s,%s,%s,%s)"
+                        " ON CONFLICT DO NOTHING",
+                        (resolves, ck, leaf_hash_of(entry), period, orig, term, self.clock()),
                     )
             if idx == len(self.tree):
                 self.tree.append_hash(leaf_hash(canonical(body(entry))))
@@ -661,6 +681,269 @@ class ReceiptNode:
                         {"term_billed_seconds": billed_seconds(cdr.answer_ts or 0, cdr.end_ts)},
                     )
 
+    # ------------------------------------------------------------------ dispute resolution
+
+    async def find_dispute(self, leaf_b64: str) -> SignedDispute | None:
+        try:
+            lh = unb64u(leaf_b64)
+        except ValueError:
+            return None
+        async with self.db().connection() as conn:
+            cur = await conn.execute(
+                "SELECT entry FROM log_leaves WHERE leaf_hash = %s AND kind = 'dispute'", (lh,)
+            )
+            row = await cur.fetchone()
+        return SignedDispute.model_validate(row["entry"]) if row else None
+
+    async def resolution_for(self, ck: str) -> tuple[str, SignedReceipt] | None:
+        """(dispute leaf, receipt) if this call's dispute has been resolved."""
+        async with self.db().connection() as conn:
+            cur = await conn.execute(
+                "SELECT r.dispute_leaf, l.entry FROM resolutions r"
+                " JOIN log_leaves l ON l.leaf_hash = r.receipt_leaf WHERE r.call_key = %s",
+                (ck,),
+            )
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        return str(row["dispute_leaf"]), SignedReceipt.model_validate(row["entry"])
+
+    async def resolve_dispute(self, leaf_b64: str) -> dict[str, Any]:
+        """Originating operator: settle a logged dispute by re-proposing the call.
+
+        The re-proposal is the disputed proposal itself when the dispute
+        carries ours, otherwise a fresh one from our CDR. Raises
+        ResolutionRefused when this node cannot re-propose.
+        """
+        sd = await self.find_dispute(leaf_b64)
+        if sd is None:
+            raise ResolutionRefused("unknown dispute")
+        d = sd.dispute
+        if d.orig_node != self.node_id:
+            raise ResolutionRefused("only the originating node re-proposes")
+        if d.kind not in RESOLVABLE:
+            raise ResolutionRefused(f"{d.kind} disputes are not resolvable")
+        if not in_dispute_window(d.period, self.clock(), self.s.dispute_window_days):
+            raise ResolutionRefused("dispute window closed")
+        ck = call_key(d.orig_node, d.call_id, d.from_tag)
+        done = await self.resolution_for(ck)
+        if done is not None:
+            return {"status": "resolved", "dispute": done[0], "receipt": body(done[1])}
+        sp: SignedProposal | None = None
+        if d.proposal is not None and d.sig_orig is not None:
+            sp = SignedProposal(proposal=d.proposal, sig_orig=d.sig_orig)
+            if d.proposal.orig_node != self.node_id or not verify_proposal(self.keyring, sp):
+                sp = None
+        if sp is None:
+            cdr = await self._load_cdr(ck, "out")
+            if cdr is None:
+                raise ResolutionRefused("no CDR to re-propose from")
+            try:
+                sp = make_proposal(self.ident, cdr)
+            except (ProtocolError, ValueError) as exc:
+                raise ResolutionRefused(f"cannot build a proposal: {exc}") from exc
+        req = ResolutionRequest(dispute=sd, proposal=sp)
+        async with self.db().connection() as conn:
+            await conn.execute(
+                "INSERT INTO resolution_outbox (dispute_leaf, peer_node, request, created_ms,"
+                " next_try_ms) VALUES (%s,%s,%s,%s,0) ON CONFLICT (dispute_leaf) DO UPDATE"
+                " SET state = 'pending', next_try_ms = 0, detail = ''"
+                " WHERE resolution_outbox.state <> 'resolved'",
+                (leaf_b64, d.term_node, Jsonb(body(req)), self.clock()),
+            )
+        return await self._send_resolution(leaf_b64, d.term_node, req)
+
+    async def _send_resolution(
+        self, leaf: str, peer: str, req: ResolutionRequest
+    ) -> dict[str, Any]:
+        now = self.clock()
+        out: dict[str, Any]
+        if not in_dispute_window(req.dispute.dispute.period, now, self.s.dispute_window_days):
+            out = {"status": "expired", "detail": "dispute window closed"}
+        else:
+            try:
+                r = await self.peers.request(peer, "POST", "/v1/resolutions", payload=body(req))
+            except PeerError as exc:
+                out = {"status": "pending", "detail": f"peer unreachable: {exc}"}
+            else:
+                data = r.json() if r.content else {}
+                if r.status_code == 200 and "receipt" in data:
+                    out = await self._accept_resolution(leaf, req, data["receipt"])
+                elif r.status_code == 202:
+                    out = {"status": "needs_approval", "detail": data.get("reason", "")}
+                elif r.status_code == 409:
+                    out = {"status": "refused", "detail": data.get("error", "")}
+                else:
+                    out = {"status": "pending", "detail": f"HTTP {r.status_code}"}
+        async with self.db().connection() as conn:
+            await conn.execute(
+                "UPDATE resolution_outbox SET state = %s, detail = %s, attempts = attempts + 1,"
+                " next_try_ms = %s WHERE dispute_leaf = %s AND state <> 'resolved'",
+                (
+                    out["status"],
+                    str(out.get("detail", ""))[:500],
+                    now + int(self.s.resolution_retry_s * 1000),
+                    leaf,
+                ),
+            )
+        return {"dispute": leaf, **out}
+
+    async def _accept_resolution(
+        self, leaf: str, req: ResolutionRequest, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        sr = SignedReceipt.model_validate(data)
+        r = sr.receipt
+        p = req.proposal.proposal
+        errors = verify_receipt(self.keyring, sr)
+        if (r.proposal.call_id, r.proposal.from_tag, r.proposal.orig_node) != (
+            p.call_id,
+            p.from_tag,
+            self.node_id,
+        ) or r.proposal.term_node != p.term_node:
+            errors.append("receipt is for another call")
+        elif body(r.proposal) != body(p) or r.sig_orig != req.proposal.sig_orig:
+            errors.append("receipt does not embed our re-proposal")
+        if r.resolves not in (None, leaf):
+            errors.append("receipt resolves another dispute")
+        if errors:
+            await self._alarm(p.term_node, "bad_resolution", "; ".join(errors))
+            return {"status": "pending", "detail": "invalid receipt: " + "; ".join(errors)}
+        # A receipt without ``resolves`` is one the peer had already signed for
+        # this call (our proposal, its countersignature): it settles the dispute.
+        await self._record(sr, outcome=False, resolves=leaf)
+        return {"status": "resolved", "receipt": body(sr)}
+
+    async def _deliver_resolutions(self) -> None:
+        async with self.db().connection() as conn:
+            cur = await conn.execute(
+                "SELECT dispute_leaf, peer_node, request FROM resolution_outbox"
+                " WHERE state IN ('pending', 'needs_approval') AND next_try_ms <= %s LIMIT 100",
+                (self.clock(),),
+            )
+            rows = await cur.fetchall()
+        for row in rows:
+            await self._send_resolution(
+                row["dispute_leaf"],
+                row["peer_node"],
+                ResolutionRequest.model_validate(row["request"]),
+            )
+
+    async def receive_resolution(self, req: ResolutionRequest, sender: str) -> ProposalResult:
+        """Terminating side: countersign a re-proposal, or say why not (§5.7)."""
+        p = req.proposal.proposal
+        if sender != p.orig_node:
+            return ProposalResult(403, {"error": "sender is not the originating node"})
+        if p.term_node != self.node_id:
+            return ProposalResult(400, {"error": "proposal addressed to another node"})
+        try:
+            check_resolution_request(self.keyring, req, self.clock(), self.s.dispute_window_days)
+        except ResolutionRefused as exc:
+            return ProposalResult(409, {"error": exc.reason})
+        ck = call_key(p.orig_node, p.call_id, p.from_tag)
+        leaf = dispute_leaf(req.dispute)
+        async with self.decide_lock:
+            done = await self.resolution_for(ck)
+            if done is not None:
+                return ProposalResult(200, {"receipt": body(done[1])})
+            await self._record(req.dispute)  # the dispute may not have reached us yet
+            async with self.db().connection() as conn:
+                cur = await conn.execute(
+                    "SELECT entry FROM log_leaves WHERE call_key = %s AND kind = 'receipt'"
+                    " ORDER BY idx LIMIT 1",
+                    (ck,),
+                )
+                row = await cur.fetchone()
+            if row is not None:
+                # We countersigned this call before (the originator never got it,
+                # or rejected it): that receipt is the resolution, not a second one.
+                old = SignedReceipt.model_validate(row["entry"])
+                if body(old.receipt.proposal) != body(p):
+                    return ProposalResult(
+                        409, {"error": "call already has a receipt on another proposal"}
+                    )
+                await self._record(old, outcome=False, resolves=leaf)
+                return ProposalResult(200, {"receipt": body(old)})
+            async with self.db().connection() as conn:
+                cur = await conn.execute(
+                    "SELECT 1 FROM resolution_approvals WHERE dispute_leaf = %s", (leaf,)
+                )
+                approved = await cur.fetchone() is not None
+            cdr = await self._load_cdr(ck, "in")
+            try:
+                rb = resolve_against_cdr(
+                    req, cdr, self.tol, self.ident.signing.key_id, approved=approved
+                )
+            except ResolutionRefused as exc:
+                if not exc.needs_approval:
+                    return ProposalResult(409, {"error": exc.reason})
+                async with self.db().connection() as conn:
+                    await conn.execute(
+                        "INSERT INTO resolution_inbox (dispute_leaf, request, reason,"
+                        " received_ms) VALUES (%s,%s,%s,%s) ON CONFLICT (dispute_leaf)"
+                        " DO UPDATE SET request = EXCLUDED.request, reason = EXCLUDED.reason",
+                        (leaf, Jsonb(body(req)), exc.reason, self.clock()),
+                    )
+                return ProposalResult(202, {"status": "needs_approval", "reason": exc.reason})
+            sr = countersign(self.ident, rb)
+            await self._record(sr, outcome=False, resolves=leaf)
+            async with self.db().connection() as conn:
+                await conn.execute("DELETE FROM resolution_inbox WHERE dispute_leaf = %s", (leaf,))
+        log.info("%s: resolved dispute %s for %s", self.node_id, leaf, p.call_id)
+        return ProposalResult(200, {"receipt": body(sr)})
+
+    async def approve_resolution(self, leaf_b64: str) -> dict[str, Any]:
+        """Terminating operator: accept the originator's figures for this dispute."""
+        sd = await self.find_dispute(leaf_b64)
+        if sd is None:
+            raise ResolutionRefused("unknown dispute")
+        if sd.dispute.term_node != self.node_id:
+            raise ResolutionRefused("only the terminating node approves")
+        async with self.db().connection() as conn:
+            await conn.execute(
+                "INSERT INTO resolution_approvals (dispute_leaf, approved_ms) VALUES (%s,%s)"
+                " ON CONFLICT DO NOTHING",
+                (leaf_b64, self.clock()),
+            )
+        return {"dispute": leaf_b64, "status": "approved"}
+
+    async def resolution_status(self) -> dict[str, Any]:
+        """Operator view: open disputes, re-proposals in flight and awaiting approval."""
+        async with self.db().connection() as conn:
+            cur = await conn.execute(
+                "SELECT l.leaf_hash, l.entry, l.period FROM log_leaves l"
+                " LEFT JOIN resolutions r ON r.call_key = l.call_key"
+                " WHERE l.kind = 'dispute' AND r.call_key IS NULL ORDER BY l.idx"
+            )
+            open_rows = await cur.fetchall()
+            cur = await conn.execute(
+                "SELECT dispute_leaf, peer_node, state, detail, attempts FROM resolution_outbox"
+                " ORDER BY created_ms"
+            )
+            outbox = await cur.fetchall()
+            cur = await conn.execute(
+                "SELECT dispute_leaf, reason, received_ms FROM resolution_inbox"
+                " ORDER BY received_ms"
+            )
+            inbox = await cur.fetchall()
+        now = self.clock()
+        disputes = []
+        for r in open_rows:
+            d = SignedDispute.model_validate(r["entry"]).dispute
+            disputes.append(
+                {
+                    "dispute": b64u(bytes(r["leaf_hash"])),
+                    "kind": d.kind,
+                    "call_id": d.call_id,
+                    "orig_node": d.orig_node,
+                    "term_node": d.term_node,
+                    "raised_by": d.raised_by,
+                    "period": d.period,
+                    "resolvable": d.kind in RESOLVABLE
+                    and in_dispute_window(d.period, now, self.s.dispute_window_days),
+                }
+            )
+        return {"open": disputes, "outbox": outbox, "awaiting_approval": inbox}
+
     # ------------------------------------------------------------------ STH
 
     async def latest_sth(self) -> SignedSTH | None:
@@ -944,6 +1227,7 @@ class ReceiptNode:
         await self._expire()
         await self._deliver_outbox()
         await self._deliver_disputes()
+        await self._deliver_resolutions()
         now = self.clock()
         if sth or (sth is None and now - self._last_sth_ms >= self.s.sth_interval_s * 1000):
             await self.publish_sth()

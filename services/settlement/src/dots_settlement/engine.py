@@ -21,7 +21,7 @@ from dots_common.client import DotsClient
 from dots_common.identity import NodeIdentity
 from dots_common.jcs import canonical
 from dots_common.merkle import leaf_hash, verify_inclusion
-from dots_common.models import SignedReceipt, SignedSTH, body
+from dots_common.models import SignedReceipt, SignedSTH, body, call_key
 from dots_common.protocol import rate_table_hash, verify_receipt
 from dots_common.settlement import (
     ExcludedItem,
@@ -54,7 +54,13 @@ CREATE TABLE IF NOT EXISTS statements (
 CREATE INDEX IF NOT EXISTS statements_pp ON statements (pair, period);
 CREATE TABLE IF NOT EXISTS settled (
     leaf_hash TEXT PRIMARY KEY,
-    statement_id TEXT NOT NULL
+    statement_id TEXT NOT NULL,
+    call_key TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS settled_call ON settled (call_key);
+CREATE TABLE IF NOT EXISTS resolution_cursor (
+    node TEXT PRIMARY KEY,
+    since_ms INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS route_daily (
     period TEXT NOT NULL,
@@ -102,8 +108,9 @@ class Store:
         self.db = sqlite3.connect(str(path), check_same_thread=False)
         self.db.executescript(SCHEMA)
 
-    def save(self, ss: SignedStatement, leaves: Sequence[str] | None = None) -> str:
-        """Upsert a statement. ``leaves``: every receipt leaf it covers (passed and held)."""
+    def save(self, ss: SignedStatement, leaves: Sequence[tuple[str, str]] | None = None) -> str:
+        """Upsert a statement. ``leaves``: (leaf hash, call key) of every receipt it
+        covers, passed and held."""
         sid = statement_id(ss.statement)
         st = ss.statement
         with self.db:
@@ -123,10 +130,11 @@ class Store:
             )
             if ss.final:
                 row = self.db.execute("SELECT leaves FROM statements WHERE id = ?", (sid,))
-                for lh in json.loads(row.fetchone()[0]):
+                for lh, ck in json.loads(row.fetchone()[0]):
                     self.db.execute(
-                        "INSERT OR IGNORE INTO settled (leaf_hash, statement_id) VALUES (?,?)",
-                        (lh, sid),
+                        "INSERT OR IGNORE INTO settled (leaf_hash, statement_id, call_key)"
+                        " VALUES (?,?,?)",
+                        (lh, sid, ck),
                     )
         return sid
 
@@ -162,6 +170,25 @@ class Store:
             self.db.execute("SELECT 1 FROM settled WHERE leaf_hash = ?", (lh,)).fetchone()
             is not None
         )
+
+    def settled_call(self, ck: str) -> str | None:
+        """Leaf hash of the receipt already settled for this call, if any."""
+        row = self.db.execute("SELECT leaf_hash FROM settled WHERE call_key = ?", (ck,)).fetchone()
+        return str(row[0]) if row else None
+
+    def resolution_cursor(self, node: str) -> int:
+        row = self.db.execute(
+            "SELECT since_ms FROM resolution_cursor WHERE node = ?", (node,)
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def set_resolution_cursor(self, node: str, since_ms: int) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO resolution_cursor (node, since_ms) VALUES (?,?)"
+                " ON CONFLICT(node) DO UPDATE SET since_ms = excluded.since_ms",
+                (node, since_ms),
+            )
 
     def record_payout(self, sid: str, adapter: str, record: dict[str, Any]) -> dict[str, Any]:
         row = self.db.execute(
@@ -355,6 +382,25 @@ class Engine:
             for r in got.receipts
             if r not in fresh
         ]
+        # One paid receipt per call. Two receipts for one call in both logs (an
+        # ordinary one and a resolution, say) means a peer signed twice: pay
+        # neither and let the operators sort it out. Likewise for a receipt
+        # whose call was already settled through another receipt.
+        by_call: dict[str, list[SignedReceipt]] = {}
+        for r in got.receipts:
+            by_call.setdefault(_call_key(r), []).append(r)
+        dup = [
+            r
+            for r in fresh
+            if len(by_call[_call_key(r)]) > 1
+            or self.store.settled_call(_call_key(r)) not in (None, b64u(_leaf(r)))
+        ]
+        if dup:
+            log.error("%s %s: %d receipts for already-paid calls", pair, period, len(dup))
+            excluded += [
+                ExcludedItem(leaf_hash=b64u(_leaf(r)), reason="duplicate_call") for r in dup
+            ]
+            fresh = [r for r in fresh if r not in dup]
         excluded.sort(key=lambda x: x.leaf_hash)
         ctx = self.context(pair, period, got.receipts)
         self.record_period(period, ctx)
@@ -377,7 +423,8 @@ class Engine:
                 **totals.counts,
                 "disputed": got.disputes,
                 "unmatched": len(got.unmatched),
-                "already_settled": len(got.receipts) - len(fresh),
+                "already_settled": len(got.receipts) - len(fresh) - len(dup),
+                "resolved": sum(1 for r in fresh if r.receipt.resolves is not None),
             },
             directions=totals.directions,
             held=totals.held,
@@ -391,7 +438,7 @@ class Engine:
         ss = SignedStatement(
             statement=st, sig_engine=self.ident.signing.sign(Context.STATEMENT, body(st))
         )
-        self.store.save(ss, [b64u(_leaf(s.receipt)) for s in scored])
+        self.store.save(ss, [(b64u(_leaf(s.receipt)), _call_key(s.receipt)) for s in scored])
         return ss
 
     def request_acks(self, ss: SignedStatement) -> SignedStatement:
@@ -426,6 +473,53 @@ class Engine:
             out.append(self.request_acks(ss))
         return out
 
+    def supplementary(self, *, force: bool = False) -> list[SignedStatement]:
+        """Settle resolutions logged after their period was settled (§7.7).
+
+        Asks every node for resolutions since the last check; each closed
+        (pair, period) with a resolution receipt not yet settled gets a
+        supplementary statement covering only the receipts not settled before.
+        Open periods are left to the regular run (``force``, lab only, settles
+        them anyway).
+        """
+        nodes = sorted({n for t in self.tables for n in t.table.pair})
+        todo: set[tuple[tuple[str, str], str]] = set()
+        cursors: dict[str, int] = {}
+        for n in nodes:
+            since = self.store.resolution_cursor(n)
+            rows = self.client.get(n, "/v1/resolutions", since_ms=since)["resolutions"]
+            newest = since
+            for r in rows:
+                _, end = period_bounds(r["period"])
+                if not force and self.clock() < end + self.grace_ms:
+                    continue  # the regular run will pick it up
+                newest = max(newest, r["created_ms"])
+                a, b = sorted((r["orig_node"], r["term_node"]))
+                if not self.store.is_settled(r["receipt"]):
+                    todo.add(((a, b), r["period"]))
+            cursors[n] = newest
+        out = []
+        ok = True
+        for pair, period in sorted(todo):
+            if not self.store.list_statements(period, ",".join(pair)):
+                continue  # never settled: the regular run covers it
+            try:
+                ss = self.build(pair, period, force=force)
+            except SettlementError as exc:
+                log.error("supplementary %s %s: %s", pair, period, exc)
+                ok = False
+                continue
+            out.append(self.request_acks(ss))
+        if ok:
+            for n, c in cursors.items():
+                self.store.set_resolution_cursor(n, c)
+        return out
+
 
 def _leaf(r: SignedReceipt) -> bytes:
     return leaf_hash(canonical(body(r)))
+
+
+def _call_key(r: SignedReceipt) -> str:
+    p = r.receipt.proposal
+    return call_key(p.orig_node, p.call_id, p.from_tag)

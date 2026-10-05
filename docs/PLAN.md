@@ -62,7 +62,7 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 | M7 | Signed peer registry: each operator signs its own entry; registry = set of signed entries | done |
 | M8 | Bind the TLS client certificate to the node identity in the receipt service | done |
 | M9 | Per-route fraud baselines (done); Open Voice Shield client (waiting on the OVS webhook/API spec) | in progress |
-| M10 | Dispute resolution: re-proposal or adjudication, logged as new entries | |
+| M10 | Dispute resolution: re-proposal or adjudication, logged as new entries | done |
 | M11 | SRTP end to end: SRTP-capable test agent, pinned rtpengine passthrough flags | |
 | M12 | Transit (A→B→C): per-hop receipts chained by a shared reference | |
 | M13 | Kamailio 6.1 once `deb.kamailio.org` is reachable from CI | |
@@ -94,7 +94,15 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 - Per-route daily metrics in the engine store; trailing 7-day baselines (minimum 3 days of history).
 - `acd_anomaly` and `asr_anomaly` compare against the route's own history when it exists. The new `volume_spike` rule catches traffic surges. Absolute thresholds remain the fallback.
 - Tests: baseline-driven ACD, ASR and volume rules; the minimum-history fallback; the trailing-window maths and idempotent re-recording.
-- Open Voice Shield: OVS analyses calls that traverse its own SIP hop and reports verdicts per call by signed webhook. Wiring it in means ingesting those webhooks keyed by Call-ID and mapping verdicts into the gate. That needs the webhook payload schema and signature scheme, and `ovs.telecomsxchange.com` is not reachable from the build environment. The stub adapter (config keys, fail-closed) stays until the spec is provided.
+- Open Voice Shield: OVS analyses calls that traverse its own SIP hop and reports verdicts per call by signed webhook. It is not a request/response scoring API, so the brief's "HTTP client" becomes a webhook receiver. What is confirmed so far: the event is `call.analyzed`; the body is signed with HMAC-SHA256 in `X-OVS-Signature`, using a secret set in the OVS portal; and the analysis carries probability, category, recommendation, red flags and a route alert. Still needed: the exact payload field names, how the Call-ID is carried, and the signature's canonical input. Those are in `/api/openapi.json` on `ovs.telecomsxchange.com`, which this environment cannot reach. The stub adapter (config keys, fail-closed) stays until then.
+
+### M10: Dispute resolution — done
+
+- A dispute is settled by re-proposal. The result is an ordinary dual-signed receipt carrying `resolves: <dispute leaf hash>` under the terminating node's signature, logged by both nodes next to the dispute (ARCHITECTURE.md §5.7). The field is omitted on ordinary receipts, so their bytes are unchanged.
+- Whoever would lose authorizes. The originator re-proposes (internal API). The terminator countersigns at once only when it concedes nothing (same destination and rate, agreed duration not below its own beyond tolerance). Otherwise its operator approves first. There is one resolution per call, and an existing countersignature is reused, never doubled.
+- Settlement: supplementary statements for periods already settled (scheduler and `POST /v1/supplementary`), a `resolved` count, and a one-paid-receipt-per-call guard (`duplicate_call` exclusion).
+- Third-party adjudication is not a protocol role: any ruling still has to end in the two parties' signatures, which is what re-proposal produces.
+- Tests: protocol unit tests (signed bytes unchanged, `resolves` bound by signature, concession rules, window and call checks); service tests (approval flow, no-concession path, missing terminating CDR, reuse of an existing countersignature, refusals and window expiry); engine tests (supplementary statement, open-period deferral, duplicate-call guard within and across statements). Lab: one A→C duration-mismatch dispute is resolved by the operators (approval required, since C measured 15 s more), the receipt is checked in both logs with inclusion proofs, and a final supplementary statement pays exactly that call.
 
 ## Follow-up work (known gaps)
 
@@ -103,8 +111,7 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 | SRTP passthrough verification | The lab uses plain RTP; `media.e2e` is always false | SRTP-capable test agent; pin rtpengine flags |
 | Registry revocation | Members can be added by majority but not removed; anchors cannot rotate | Signed revocation objects endorsed by a majority; anchor rotation by majority |
 | Transit (A→B→C) | Phase 1 refuses numbers outside the terminating node's own ranges | Per-hop receipts chained by a shared reference |
-| Open Voice Shield | Adapter is a stub (config keys, fail-closed) | Implement the HTTP client against the OVS scoring API |
-| Dispute resolution | Disputes are listed and excluded; there is no workflow to resolve them | Re-proposal or manual adjudication, logged as new entries |
+| Open Voice Shield | Adapter is a stub (config keys, fail-closed) | Webhook receiver for `call.analyzed` (HMAC-SHA256 `X-OVS-Signature`), verdicts keyed by Call-ID into the gate |
 
 ## Corrections to the brief (proposed; details in ARCHITECTURE.md)
 

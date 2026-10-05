@@ -86,7 +86,8 @@ def _stablecoin(s: Settings, client: DotsClient) -> Payout:
 
 
 async def scheduler(engine: Engine, s: Settings) -> None:
-    """Settle yesterday (UTC) once its grace period has passed."""
+    """Settle yesterday (UTC) once its grace period has passed, and closed periods
+    again when disputes in them are resolved (supplementary statements)."""
     done: set[str] = set()
     while True:
         now = dt.datetime.now(dt.UTC)
@@ -100,6 +101,10 @@ async def scheduler(engine: Engine, s: Settings) -> None:
                 done.add(period)
             except Exception:
                 log.exception("scheduled settlement for %s failed", period)
+        try:
+            await asyncio.to_thread(engine.supplementary)
+        except Exception:
+            log.exception("supplementary settlement failed")
         await asyncio.sleep(s.schedule_interval_s)
 
 
