@@ -8,7 +8,8 @@ material generated fresh for each new volume. Re-running is a no-op unless
 Layout:
     ca/ca.pem                lab TLS CA (SIP mTLS and receipt-service HTTPS)
     stir/ca.pem              lab STI-CA (STIR/SHAKEN certificates)
-    peers.json               peer registry: node keys, URLs, number ranges
+    peers.json               signed peer registry: node keys, URLs, number ranges
+    anchors.json             founding members' key ids (registry trust anchors)
     rates/<a>--<b>.json      rate tables signed by both operators
     <node>/keys/             Ed25519 signing + X25519 agreement keys
     <node>/tls/              TLS certificate and key (CN = node id)
@@ -35,7 +36,8 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from eth_account import Account
 
 from dots_common.identity import NodeIdentity
-from dots_common.models import PeerRegistry, RateTable, SignedRateTable, body
+from dots_common.models import Peer, RateTable, SignedRateTable, body
+from dots_common.registry import SignedEntry, anchors_of, assemble, endorse, sign_entry
 from dots_common.signing import Context
 
 SERVICE_UID = 10001
@@ -222,7 +224,7 @@ def bootstrap(state: Path, topo: dict[str, Any], force: bool = False) -> bool:
     _write(state / "stir/ca.pem", sti_cert.public_bytes(serialization.Encoding.PEM))
 
     idents: dict[str, NodeIdentity] = {}
-    peers = []
+    peers: list[tuple[NodeIdentity, Peer]] = []
     for node, spec in topo["nodes"].items():
         d = state / node
         ident = NodeIdentity.generate(node, d / "keys")
@@ -236,28 +238,42 @@ def bootstrap(state: Path, topo: dict[str, Any], force: bool = False) -> bool:
         _write(d / "wallet.key", "0x" + bytes(wallet.key).hex(), 0o600)
         _write(d / "kamailio/node.cfg", kamailio_node_cfg(node, topo))
         peers.append(
-            ident.peer_entry(
-                operator=spec["operator"],
-                receipts_url=f"https://receipts-{letter}:8443",
-                sip_uri=f"sip:{node}:5061;transport=tls",
-                stir_x5u=f"http://{node}:8088/stir/cert.pem",
-                ranges=spec["ranges"],
-                settlement_address=wallet.address,
+            (
+                ident,
+                ident.peer_entry(
+                    operator=spec["operator"],
+                    receipts_url=f"https://receipts-{letter}:8443",
+                    sip_uri=f"sip:{node}:5061;transport=tls",
+                    stir_x5u=f"http://{node}:8088/stir/cert.pem",
+                    ranges=spec["ranges"],
+                    settlement_address=wallet.address,
+                ),
             )
         )
     for role in ("settlement", "observer"):
         d = state / role
         ident = NodeIdentity.generate(role, d / "keys")
         _save_pair(d / "tls", *issue(ca_key, ca_cert, role, [role, "mcp"]))
-        peers.append(ident.peer_entry(operator="DOTS lab", role=role))
-    registry = PeerRegistry(peers=peers)
+        peers.append((ident, ident.peer_entry(operator="DOTS lab", role=role)))
+    # Genesis registry: every member signs its own entry; every node operator
+    # endorses every other member's entry. The founders are the anchors.
+    now_ms = int(dt.datetime.now(dt.UTC).timestamp() * 1000)
+    entries: list[SignedEntry] = []
+    for ident, peer in peers:
+        se = sign_entry(ident, peer, seq=1, issued_ts=now_ms)
+        for node_id, endorser in idents.items():
+            if node_id != peer.node_id:
+                se = endorse(endorser, se)
+        entries.append(se)
+    registry = assemble(entries)
     _write(state / "peers.json", json.dumps(body(registry), indent=2))
+    _write(state / "anchors.json", json.dumps({"anchors": anchors_of(registry, idents)}, indent=2))
 
     pairs: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for r in topo["rates"]:
         a, b = sorted((r["payer"], r["payee"]))
         pairs.setdefault((a, b), []).append(r)
-    for (a, b), entries in sorted(pairs.items()):
+    for (a, b), rate_entries in sorted(pairs.items()):
         table = RateTable.model_validate(
             {
                 "table_id": f"{a}--{b}--lab",
@@ -265,7 +281,7 @@ def bootstrap(state: Path, topo: dict[str, Any], force: bool = False) -> bool:
                 "currency": topo["currency"],
                 "minor_units": 2,
                 "effective_from": "2020-01-01",
-                "entries": entries,
+                "entries": rate_entries,
             }
         )
         t = body(table)

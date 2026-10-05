@@ -137,7 +137,7 @@ The brief says "Ed25519 keypair per node". That holds for the receipt layer. SHA
 
 `key_id` = lowercase hex SHA-256 of the raw 32-byte public key.
 
-**Peer registry** (`lab/peers.json` in Phase 1, signed per operator in Phase 2): a list of entries
+**Peer registry** (signed since Phase 2 M7; see §4.1): a list of entries
 
 ```json
 {
@@ -154,6 +154,18 @@ The brief says "Ed25519 keypair per node". That holds for the receipt layer. SHA
 ```
 
 Keys carry a validity interval so they can be rotated without invalidating old receipts. A signature is checked against the key that was valid at the receipt's `end_ts`. In the lab, all keys and certs are generated at container start by `lab/bootstrap/`; nothing secret is committed.
+
+### 4.1 Signed registry and admission (Phase 2, M7)
+
+The registry is a trust root: it decides who may sign receipts, which number ranges each operator terminates, and where to pay. So no single operator may change it.
+
+- **Entries.** Each member signs its own `RegistryEntry {seq, issued_ts, peer}` (context `dots/v1/registry-entry`) with a key listed in that entry. Other node operators endorse it (context `dots/v1/registry-endorsement`). The file is just the set of signed entries, and anyone may append to it.
+- **Anchors.** Every verifier is configured with the founding members' `node_id → key_id` (`anchors.json`), as Certificate Transparency clients pin log keys. Anchors pin *identity*, not content.
+- **Admission.** Membership grows from the anchors. A new member is admitted once a strict majority of current node members endorse it; settlement and observer roles need a majority of all nodes.
+- **Content.** Every member's entry, founders included, must carry endorsements from a strict majority of the *other* members. For each member, the newest version (`seq`) that qualifies is used. An update that is unendorsed, or signed by a key that is not anchored, simply does not take effect, and the previous entry stays.
+- **What this stops.** An operator can't claim another operator's ranges or redirect its payouts. It also can't admit a member on its own. Appending a ring of self-generated members that vouch for each other gains nothing, and neither does appending an imposter entry with a higher `seq`: it can neither join nor evict anyone. Tests cover each case. The lab check appends an imposter and two fake members to the live registry and asserts the accepted view is unchanged.
+- **Loading.** `Keyring.load` refuses an unsigned registry, keeps only the accepted entries and logs the rejected ones. A receipt service refuses to start if its own entry is not accepted. `dots-registry verify peers.json anchors.json` prints the verdict for operators.
+- **Not yet covered.** Member *removal* (revocation by majority) and anchor rotation. Removal needs signed revocations, a different object, and is left for a later milestone.
 
 ## 5. Receipt data model
 

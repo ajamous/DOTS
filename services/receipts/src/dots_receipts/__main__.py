@@ -20,6 +20,9 @@ from .ratetables import RateTables
 
 def build(settings: Settings) -> ReceiptNode:
     keyring = Keyring.load(settings.peers_file)
+    if keyring.peer(settings.node_id) is None:
+        why = keyring.rejected.get(settings.node_id, "not in the registry")
+        raise SystemExit(f"{settings.node_id}: own registry entry not accepted: {why}")
     ident = NodeIdentity.load(settings.node_id, settings.key_dir)
     tables = RateTables.load(settings.rate_tables_dir, keyring)
     verify: ssl.SSLContext | bool = True

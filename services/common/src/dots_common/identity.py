@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +14,7 @@ from .models import Peer, PeerKey, PeerRegistry
 from .signing import Context, SigningKey, verify
 
 REQUEST_MAX_SKEW_MS = 60_000
+log = logging.getLogger("dots.identity")
 
 
 @dataclass(frozen=True)
@@ -65,10 +67,28 @@ class Keyring:
 
     def __init__(self, registry: PeerRegistry) -> None:
         self.registry = registry
+        self.rejected: dict[str, str] = {}
 
     @classmethod
-    def load(cls, path: Path) -> "Keyring":
-        return cls(PeerRegistry.model_validate(json.loads(path.read_text())))
+    def load(cls, path: Path, anchors_path: Path | None = None) -> "Keyring":
+        """Load a signed registry and keep only the entries that verify.
+
+        ``anchors_path`` defaults to ``anchors.json`` next to the registry.
+        Unsigned registries are refused: the registry is a trust root.
+        """
+        from .registry import SignedRegistry, verify_registry
+
+        data = json.loads(path.read_text())
+        if data.get("type") != "signed_registry":
+            raise ValueError(f"{path}: not a signed registry")
+        anchors_file = anchors_path or path.with_name("anchors.json")
+        anchors: dict[str, str] = json.loads(anchors_file.read_text())["anchors"]
+        verdict = verify_registry(SignedRegistry.model_validate(data), anchors)
+        for nid, why in sorted(verdict.rejected.items()):
+            log.warning("registry entry %s rejected: %s", nid, why)
+        keyring = cls(verdict.accepted)
+        keyring.rejected = verdict.rejected
+        return keyring
 
     def peer(self, node_id: str) -> Peer | None:
         return self.registry.get(node_id)

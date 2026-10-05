@@ -59,8 +59,8 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 | # | Milestone | Status |
 |---|---|---|
 | M6 | Durable call-end spool and reconciler (recover events lost while a receipt service is down) | done |
-| M7 | Signed peer registry: each operator signs its own entry; registry = set of signed entries | next |
-| M8 | Bind the TLS client certificate to the node identity in the receipt service | |
+| M7 | Signed peer registry: each operator signs its own entry; registry = set of signed entries | done |
+| M8 | Bind the TLS client certificate to the node identity in the receipt service | next |
 | M9 | Open Voice Shield client; per-prefix fraud baselines instead of fixed thresholds | |
 | M10 | Dispute resolution: re-proposal or adjudication, logged as new entries | |
 | M11 | SRTP end to end: SRTP-capable test agent, pinned rtpengine passthrough flags | |
@@ -74,12 +74,20 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 - Chosen over `acc` CDRs: identical payload to the HTTP event (ms timestamps, attestation, media), so recovered calls bill exactly like delivered ones.
 - Tests: reconciler integration tests (recovery, idempotency with HTTP, bad rows, spool unavailable). New lab scenario `recovery` (orig receipt service down for 3 calls, then restarted: normal receipts). The `outage` scenario still yields disputes.
 
+### M7: Signed peer registry — done
+
+- `dots_common.registry`: self-signed entries plus endorsements; membership anchored on the founders' keys and grown by majority endorsement; content changes need a majority of the other members; the newest *qualifying* version wins.
+- All services load the registry through verification; a receipt service will not start if its own entry is rejected; `dots-registry verify` CLI.
+- The lab bootstrap writes a genesis registry (founders sign and endorse each other) and `anchors.json`.
+- Tests: genesis, tampering, unendorsed and singly-endorsed updates, majority-endorsed update, fake member ring, new member admission, role entries, foreign endorsement keys, imposter with the anchored name, unsigned registry refused. Lab: forgeries appended to the live registry change nothing.
+- Not yet: signed revocation of members and anchor rotation.
+
 ## Follow-up work (known gaps)
 
 | Gap | Why it matters | Plan |
 |---|---|---|
 | SRTP passthrough verification | The lab uses plain RTP; `media.e2e` is always false | SRTP-capable test agent; pin rtpengine flags |
-| Signed peer registry | `peers.json` is distributed by the lab bootstrap, not signed per operator | Each operator signs its own entry; registry = set of signed entries |
+| Registry revocation | Members can be added by majority but not removed; anchors cannot rotate | Signed revocation objects endorsed by a majority; anchor rotation by majority |
 | mTLS identity binding in the receipt service | Authorization uses request signatures; the client certificate is only a transport gate | Expose the peer certificate to the app (proxy header or ASGI TLS extension) and bind it to `node_id` |
 | Transit (A→B→C) | Phase 1 refuses numbers outside the terminating node's own ranges | Per-hop receipts chained by a shared reference |
 | Fraud baselines | ACD/ASR rules use absolute thresholds; there is no trailing per-prefix history yet | Keep per-prefix daily aggregates and compare against a trailing window |

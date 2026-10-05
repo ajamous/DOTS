@@ -125,3 +125,30 @@ def test_peers_hold_each_others_tree_heads(client: DotsClient) -> None:
     for node in nodes:
         held = {s["sth"]["log_id"] for s in client.get(node, "/v1/peers/sths")["sths"]}
         assert held == set(nodes) - {node}, (node, held)
+
+
+def test_registry_is_signed_and_resists_appended_forgeries(tmp_path: Any) -> None:
+    import json
+    from pathlib import Path
+
+    from dots_common.identity import NodeIdentity
+    from dots_common.models import body
+    from dots_common.registry import SignedRegistry, endorse, sign_entry, verify_registry
+
+    state = Path("/state")
+    reg = SignedRegistry.model_validate(json.loads((state / "peers.json").read_text()))
+    anchors = json.loads((state / "anchors.json").read_text())["anchors"]
+    v = verify_registry(reg, anchors)
+    assert v.rejected == {}
+    honest = {p.node_id: p.ranges for p in v.accepted.peers}
+    # an attacker appends: an imposter node-a claiming 1, and two fake members
+    mallory = NodeIdentity.generate("node-a")
+    imposter = sign_entry(mallory, mallory.peer_entry(operator="x", ranges=["1"]), 9, 1)
+    x, y = NodeIdentity.generate("node-x"), NodeIdentity.generate("node-y")
+    ex = endorse(y, sign_entry(x, x.peer_entry(operator="x", ranges=["99"]), 1, 1))
+    ey = endorse(x, sign_entry(y, y.peer_entry(operator="y", ranges=["98"]), 1, 1))
+    tampered = SignedRegistry.model_validate(
+        {**body(reg), "entries": [*body(reg)["entries"], body(imposter), body(ex), body(ey)]}
+    )
+    v2 = verify_registry(tampered, anchors)
+    assert {p.node_id: p.ranges for p in v2.accepted.peers} == honest

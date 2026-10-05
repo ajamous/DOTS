@@ -30,6 +30,8 @@ class Context(StrEnum):
     STATEMENT_ACK = "dots/v1/statement-ack"
     RATE_TABLE = "dots/v1/rate-table"
     REQUEST = "dots/v1/request"
+    REGISTRY_ENTRY = "dots/v1/registry-entry"
+    REGISTRY_ENDORSEMENT = "dots/v1/registry-endorsement"
 
 
 def signing_message(context: Context, body: Any) -> bytes:
