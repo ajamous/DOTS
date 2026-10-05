@@ -16,6 +16,7 @@ from .config import Settings
 from .node import ReceiptNode
 from .peers import PeerClient
 from .ratetables import RateTables
+from .tlsbind import PeerCertH11Protocol
 
 
 def build(settings: Settings) -> ReceiptNode:
@@ -45,6 +46,8 @@ async def serve(settings: Settings) -> None:
             "ssl_ca_certs": str(settings.tls_ca) if settings.tls_ca else None,
             "ssl_cert_reqs": ssl.CERT_REQUIRED if settings.tls_ca else ssl.CERT_NONE,
         }
+    if settings.require_tls_binding and not (settings.tls_cert and settings.tls_ca):
+        raise SystemExit("require_tls_binding needs DOTS_TLS_CERT/KEY and DOTS_TLS_CA")
     public = uvicorn.Server(
         uvicorn.Config(
             peer_app(node),
@@ -52,6 +55,7 @@ async def serve(settings: Settings) -> None:
             port=settings.listen_port,
             log_level="info",
             access_log=False,
+            http=PeerCertH11Protocol,
             **ssl_kwargs,  # type: ignore[arg-type]
         )
     )

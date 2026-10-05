@@ -60,8 +60,8 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 |---|---|---|
 | M6 | Durable call-end spool and reconciler (recover events lost while a receipt service is down) | done |
 | M7 | Signed peer registry: each operator signs its own entry; registry = set of signed entries | done |
-| M8 | Bind the TLS client certificate to the node identity in the receipt service | next |
-| M9 | Open Voice Shield client; per-prefix fraud baselines instead of fixed thresholds | |
+| M8 | Bind the TLS client certificate to the node identity in the receipt service | done |
+| M9 | Open Voice Shield client; per-prefix fraud baselines instead of fixed thresholds | next |
 | M10 | Dispute resolution: re-proposal or adjudication, logged as new entries | |
 | M11 | SRTP end to end: SRTP-capable test agent, pinned rtpengine passthrough flags | |
 | M12 | Transit (A→B→C): per-hop receipts chained by a shared reference | |
@@ -82,13 +82,19 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 - Tests: genesis, tampering, unendorsed and singly-endorsed updates, majority-endorsed update, fake member ring, new member admission, role entries, foreign endorsement keys, imposter with the anchored name, unsigned registry refused. Lab: forgeries appended to the live registry change nothing.
 - Not yet: signed revocation of members and anchor rotation.
 
+### M8: TLS certificate bound to the signer — done
+
+- `dots_receipts.tlsbind.PeerCertH11Protocol` puts the verified client certificate into the ASGI TLS extension (`client_cert_chain`) for every request on the connection.
+- `authenticate()` checks the Ed25519 request signature, then requires the presented certificate's SHA-256 to equal the signer's `tls_cert_sha256` in the signed registry. Mismatch or absence is a 403; TLS without a client certificate fails at the handshake.
+- The bootstrap records every member's certificate fingerprint in its signed registry entry.
+- Tests over a real TLS socket (uvicorn in-process): matching certificate accepted, another node's certificate refused, no certificate refused, binding switchable. Lab: the observer's certificate carrying node-a's signature is refused by node-b.
+
 ## Follow-up work (known gaps)
 
 | Gap | Why it matters | Plan |
 |---|---|---|
 | SRTP passthrough verification | The lab uses plain RTP; `media.e2e` is always false | SRTP-capable test agent; pin rtpengine flags |
 | Registry revocation | Members can be added by majority but not removed; anchors cannot rotate | Signed revocation objects endorsed by a majority; anchor rotation by majority |
-| mTLS identity binding in the receipt service | Authorization uses request signatures; the client certificate is only a transport gate | Expose the peer certificate to the app (proxy header or ASGI TLS extension) and bind it to `node_id` |
 | Transit (A→B→C) | Phase 1 refuses numbers outside the terminating node's own ranges | Per-hop receipts chained by a shared reference |
 | Fraud baselines | ACD/ASR rules use absolute thresholds; there is no trailing per-prefix history yet | Keep per-prefix daily aggregates and compare against a trailing window |
 | Open Voice Shield | Adapter is a stub (config keys, fail-closed) | Implement the HTTP client against the OVS scoring API |

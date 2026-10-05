@@ -166,9 +166,11 @@ def issue(
     return key, builder.sign(ca_key, hashes.SHA256())
 
 
-def _save_pair(directory: Path, key: ec.EllipticCurvePrivateKey, cert: x509.Certificate) -> None:
+def _save_pair(directory: Path, key: ec.EllipticCurvePrivateKey, cert: x509.Certificate) -> str:
+    """Write key and certificate; return the certificate's SHA-256 (DER, hex)."""
     _write(directory / "key.pem", _pem_key(key), 0o600)
     _write(directory / "cert.pem", cert.public_bytes(serialization.Encoding.PEM))
+    return cert.fingerprint(hashes.SHA256()).hex()
 
 
 def kamailio_node_cfg(node: str, topo: dict[str, Any]) -> str:
@@ -231,7 +233,7 @@ def bootstrap(state: Path, topo: dict[str, Any], force: bool = False) -> bool:
         idents[node] = ident
         letter = node.split("-")[-1]
         dns = [node, *spec["instances"], f"receipts-{letter}"]
-        _save_pair(d / "tls", *issue(ca_key, ca_cert, node, dns))
+        tls_fp = _save_pair(d / "tls", *issue(ca_key, ca_cert, node, dns))
         _save_pair(d / "stir", *issue(sti_key, sti_cert, f"SHAKEN {node}", [], tls=False))
         _write(d / "token", secrets.token_urlsafe(32), 0o600)
         wallet = Account.create()  # testnet-only lab wallet; never funded on mainnet
@@ -247,14 +249,17 @@ def bootstrap(state: Path, topo: dict[str, Any], force: bool = False) -> bool:
                     stir_x5u=f"http://{node}:8088/stir/cert.pem",
                     ranges=spec["ranges"],
                     settlement_address=wallet.address,
+                    tls_cert_sha256=tls_fp,
                 ),
             )
         )
     for role in ("settlement", "observer"):
         d = state / role
         ident = NodeIdentity.generate(role, d / "keys")
-        _save_pair(d / "tls", *issue(ca_key, ca_cert, role, [role, "mcp"]))
-        peers.append((ident, ident.peer_entry(operator="DOTS lab", role=role)))
+        tls_fp = _save_pair(d / "tls", *issue(ca_key, ca_cert, role, [role, "mcp"]))
+        peers.append(
+            (ident, ident.peer_entry(operator="DOTS lab", role=role, tls_cert_sha256=tls_fp))
+        )
     # Genesis registry: every member signs its own entry; every node operator
     # endorses every other member's entry. The founders are the anchors.
     now_ms = int(dt.datetime.now(dt.UTC).timestamp() * 1000)
