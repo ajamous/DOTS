@@ -38,6 +38,7 @@ x-pg: &pg
     POSTGRES_USER: dots
     POSTGRES_PASSWORD: dots-lab-only
     POSTGRES_DB: dots
+  volumes: ["./lab/postgres:/docker-entrypoint-initdb.d:ro"]
   healthcheck:
     test: ["CMD", "pg_isready", "-U", "dots"]
     interval: 2s
@@ -59,6 +60,7 @@ x-receipts-env: &receipts-env
   DOTS_STH_INTERVAL_S: "5"
   DOTS_MONITOR_INTERVAL_S: "5"
   DOTS_COUNTERSIG_WINDOW_S: "30"
+  DOTS_RECONCILE_INTERVAL_S: "5"
   DOTS_LAB_MODE: "true"
 
 x-kamailio: &kamailio
@@ -91,6 +93,7 @@ services:
       <<: *receipts-env
       DOTS_NODE_ID: node-a
       DOTS_DATABASE_URL: postgresql://dots:dots-lab-only@pg-a:5432/dots
+      DOTS_SPOOL_DATABASE_URL: postgresql://dots:dots-lab-only@pg-a:5432/kamailio
       DOTS_KEY_DIR: /state/node-a/keys
       DOTS_TLS_CERT: /state/node-a/tls/cert.pem
       DOTS_TLS_KEY: /state/node-a/tls/key.pem
@@ -109,32 +112,40 @@ services:
     <<: *kamailio
     hostname: node-a1
     environment:
+      DOTS_LISTEN_IP: 172.30.0.11
       DOTS_NODE_ID: node-a
       DOTS_ACCESS_NET: 172.30.0.64/28
-      DOTS_DMQ_PEERS: node-a2
+      DOTS_DMQ_PEERS: 172.30.0.12  # node-a2 (an IP: instances sit on two networks)
       DOTS_RTPENGINE: rtpengine-a
       DOTS_RECEIPTS_URL: http://receipts-a:8080
+      DOTS_SPOOL_DB_URL: postgres://kamailio:kamailio-lab-only@pg-a:5432/kamailio
     depends_on:
       <<: *depends-bootstrap
       rtpengine-a: {condition: service_started}
+      pg-a: {condition: service_healthy}
     networks:
       sip: {ipv4_address: 172.30.0.11}
+      int-a: {}
   node-a2:
     <<: *kamailio
     hostname: node-a2
     environment:
+      DOTS_LISTEN_IP: 172.30.0.12
       DOTS_NODE_ID: node-a
       DOTS_ACCESS_NET: 172.30.0.64/28
-      DOTS_DMQ_PEERS: node-a1
+      DOTS_DMQ_PEERS: 172.30.0.11  # node-a1
       DOTS_RTPENGINE: rtpengine-a
       DOTS_RECEIPTS_URL: http://receipts-a:8080
+      DOTS_SPOOL_DB_URL: postgres://kamailio:kamailio-lab-only@pg-a:5432/kamailio
     depends_on:
       <<: *depends-bootstrap
       rtpengine-a: {condition: service_started}
+      pg-a: {condition: service_healthy}
     networks:
       # Federation traffic for operator A lands on a2, while A's PBX registers
       # on a1: inbound calls only work if dmq_usrloc replicated the contact.
       sip: {ipv4_address: 172.30.0.12, aliases: [node-a]}
+      int-a: {}
   pbx-a:
     <<: *sipp-image
     command: ["dots-pbx"]
@@ -160,6 +171,7 @@ services:
       <<: *receipts-env
       DOTS_NODE_ID: node-b
       DOTS_DATABASE_URL: postgresql://dots:dots-lab-only@pg-b:5432/dots
+      DOTS_SPOOL_DATABASE_URL: postgresql://dots:dots-lab-only@pg-b:5432/kamailio
       DOTS_KEY_DIR: /state/node-b/keys
       DOTS_TLS_CERT: /state/node-b/tls/cert.pem
       DOTS_TLS_KEY: /state/node-b/tls/key.pem
@@ -178,15 +190,19 @@ services:
     <<: *kamailio
     hostname: node-b1
     environment:
+      DOTS_LISTEN_IP: 172.30.0.21
       DOTS_NODE_ID: node-b
       DOTS_ACCESS_NET: 172.30.0.80/28
       DOTS_RTPENGINE: rtpengine-b
       DOTS_RECEIPTS_URL: http://receipts-b:8080
+      DOTS_SPOOL_DB_URL: postgres://kamailio:kamailio-lab-only@pg-b:5432/kamailio
     depends_on:
       <<: *depends-bootstrap
       rtpengine-b: {condition: service_started}
+      pg-b: {condition: service_healthy}
     networks:
       sip: {ipv4_address: 172.30.0.21, aliases: [node-b]}
+      int-b: {}
   pbx-b:
     <<: *sipp-image
     command: ["dots-pbx"]
@@ -211,6 +227,7 @@ services:
       <<: *receipts-env
       DOTS_NODE_ID: node-c
       DOTS_DATABASE_URL: postgresql://dots:dots-lab-only@pg-c:5432/dots
+      DOTS_SPOOL_DATABASE_URL: postgresql://dots:dots-lab-only@pg-c:5432/kamailio
       DOTS_KEY_DIR: /state/node-c/keys
       DOTS_TLS_CERT: /state/node-c/tls/cert.pem
       DOTS_TLS_KEY: /state/node-c/tls/key.pem
@@ -232,15 +249,19 @@ services:
     <<: *kamailio
     hostname: node-c1
     environment:
+      DOTS_LISTEN_IP: 172.30.0.31
       DOTS_NODE_ID: node-c
       DOTS_ACCESS_NET: 172.30.0.96/28
       DOTS_RTPENGINE: rtpengine-c
       DOTS_RECEIPTS_URL: http://receipts-c:8080
+      DOTS_SPOOL_DB_URL: postgres://kamailio:kamailio-lab-only@pg-c:5432/kamailio
     depends_on:
       <<: *depends-bootstrap
       rtpengine-c: {condition: service_started}
+      pg-c: {condition: service_healthy}
     networks:
       sip: {ipv4_address: 172.30.0.31, aliases: [node-c]}
+      int-c: {}
   pbx-c:
     <<: *sipp-image
     command: ["dots-pbx"]

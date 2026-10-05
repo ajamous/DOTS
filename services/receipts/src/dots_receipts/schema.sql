@@ -123,4 +123,11 @@ CREATE TABLE IF NOT EXISTS frozen_peers (
     reason       text NOT NULL
 );
 
+-- How far the call-end spool has been reconciled.
+CREATE TABLE IF NOT EXISTS spool_cursor (
+    source       text PRIMARY KEY,
+    last_id      bigint NOT NULL,
+    updated_ms   bigint NOT NULL
+);
+
 INSERT INTO schema_version VALUES (1) ON CONFLICT DO NOTHING;

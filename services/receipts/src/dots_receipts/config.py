@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     tls_cert: Path | None = None
     tls_key: Path | None = None
 
+    # Durable call-end spool written by Kamailio (ARCHITECTURE.md §8.3)
+    spool_database_url: str | None = None
+    reconcile_interval_s: float = 60.0
+    reconcile_batch: int = 1000
+
     # Inbound
     listen_host: str = "0.0.0.0"  # noqa: S104 - containerized service
     listen_port: int = 8443

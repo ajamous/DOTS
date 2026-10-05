@@ -52,11 +52,32 @@ Branch per milestone, one PR per milestone. Each PR leaves `main`/`master` green
 1. `services/mcp` on `mcp` 2.3.0 (`MCPServer`) with read-only tools: `list_peers`, `get_receipt`, `verify_inclusion`, `get_settlement`, `list_disputes`.
 2. GitHub Actions: ruff, mypy, pytest, then the lab job (compose up, `make test`, compose down) on `ubuntu-latest`. Kamailio and rtpengine images are built in CI with layer caching.
 
-## Follow-up work (known gaps, not in Phase 1)
+## Phase 2
+
+Milestones in priority order. Each lands as its own PR with CI green (lint, types, unit, lab).
+
+| # | Milestone | Status |
+|---|---|---|
+| M6 | Durable call-end spool and reconciler (recover events lost while a receipt service is down) | done |
+| M7 | Signed peer registry: each operator signs its own entry; registry = set of signed entries | next |
+| M8 | Bind the TLS client certificate to the node identity in the receipt service | |
+| M9 | Open Voice Shield client; per-prefix fraud baselines instead of fixed thresholds | |
+| M10 | Dispute resolution: re-proposal or adjudication, logged as new entries | |
+| M11 | SRTP end to end: SRTP-capable test agent, pinned rtpengine passthrough flags | |
+| M12 | Transit (A→B→C): per-hop receipts chained by a shared reference | |
+| M13 | Kamailio 6.1 once `deb.kamailio.org` is reachable from CI | |
+
+### M6: Durable call-end spool — done
+
+- Kamailio writes every call-end event to `call_end_spool` (own database, insert-only role) with `sql_query_async`; the JSON is base64-encoded so no SIP value is quoted into SQL.
+- The receipt service reconciles with a cursor; ingestion stays idempotent; malformed rows are skipped and logged by id only.
+- Chosen over `acc` CDRs: identical payload to the HTTP event (ms timestamps, attestation, media), so recovered calls bill exactly like delivered ones.
+- Tests: reconciler integration tests (recovery, idempotency with HTTP, bad rows, spool unavailable). New lab scenario `recovery` (orig receipt service down for 3 calls, then restarted: normal receipts). The `outage` scenario still yields disputes.
+
+## Follow-up work (known gaps)
 
 | Gap | Why it matters | Plan |
 |---|---|---|
-| `acc` CDR backstop and reconciler | A call-end event lost while the receipt service is down is not recovered (disputes make the loss visible) | `acc` `cdrs_table` in a separate database; reconcile every 60 s |
 | SRTP passthrough verification | The lab uses plain RTP; `media.e2e` is always false | SRTP-capable test agent; pin rtpengine flags |
 | Signed peer registry | `peers.json` is distributed by the lab bootstrap, not signed per operator | Each operator signs its own entry; registry = set of signed entries |
 | mTLS identity binding in the receipt service | Authorization uses request signatures; the client certificate is only a transport gate | Expose the peer certificate to the app (proxy header or ASGI TLS extension) and bind it to `node_id` |
