@@ -122,6 +122,12 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 - `deb.kamailio.org` is still unreachable from CI. The Kamailio project's own release image (`ghcr.io/kamailio/kamailio:6.1.4-noble`) is reachable, which matches the brief's "official images or packages".
 - `node/kamailio/Dockerfile.upstream` builds the node on it and checks every module and tool the routing script uses. A CI job runs the full lab on it, so both 6.0.5 (default, Ubuntu archive, D9) and 6.1.4 are exercised on every PR.
 
+- **Found later on Kamailio 6.1** (the CI job above): on a fresh inter-node TLS connection, the first call's 180 Ringing can reach the caller after the 200 OK.
+  - The terminating node writes both replies on a connection that was just accepted, and on 6.1 they can leave out of order.
+  - The originating node has already completed the transaction, so it forwards the late 180 statelessly, and a UA treats that as a protocol error.
+  - Fix: a global `reply_route` drops provisional replies that no longer match a transaction. Late 2xx replies still pass, because ACK retransmission depends on them.
+  - It reproduced twice in CI on the first C→A call.
+
 ### Phase 2 status
 
 All Phase 2 milestones are done, except the Open Voice Shield client (part of M9).
