@@ -112,6 +112,7 @@ def local_cdr(
             if event.upstream_peer
             else None
         ),
+        origid=event.origid.lower() if event.origid else None,
     )
 
 
@@ -139,6 +140,7 @@ def make_proposal(ident: NodeIdentity, cdr: LocalCdr) -> SignedProposal:
         attestation=cdr.attestation,
         orig_key_id=ident.signing.key_id,
         transit_of=cdr.transit_of,
+        origid=cdr.origid,
     )
     return SignedProposal(
         proposal=proposal, sig_orig=ident.signing.sign(Context.PROPOSAL, body(proposal))
@@ -152,6 +154,20 @@ def verify_proposal(keyring: Keyring, sp: SignedProposal) -> bool:
     )
 
 
+def same_call(p: Proposal, cdr: LocalCdr) -> bool:
+    """Is this terminating CDR the proposal's call (§5.9)?
+
+    Proxies preserve Call-ID and From-tag, so the call keys match. A B2BUA
+    (an SBC, a softswitch) rewrites them; then the PASSporT origid, which
+    both operators saw in the same Identity header, identifies the call.
+    """
+    if cdr.orig_node != p.orig_node or cdr.term_node != p.term_node:
+        return False
+    if cdr.call_key == call_key(p.orig_node, p.call_id, p.from_tag):
+        return p.origid is None or cdr.origid in (None, p.origid)
+    return p.origid is not None and cdr.origid == p.origid
+
+
 def check_against_cdr(
     sp: SignedProposal,
     cdr: LocalCdr,
@@ -160,7 +176,7 @@ def check_against_cdr(
 ) -> ReceiptBody:
     """Terminating-side checks (§5.4). Returns the receipt body or raises ProtocolError."""
     p = sp.proposal
-    if cdr.direction != "in" or cdr.call_key != call_key(p.orig_node, p.call_id, p.from_tag):
+    if cdr.direction != "in" or not same_call(p, cdr):
         raise ValueError("CDR does not belong to this proposal")
     if cdr.status != "answered" or cdr.answer_ts is None:
         raise ProtocolError("missing_term_cdr", "terminating CDR shows no answered call")
@@ -340,11 +356,10 @@ def resolve_against_cdr(
     """
     sp = req.proposal
     p = sp.proposal
-    ck = call_key(p.orig_node, p.call_id, p.from_tag)
     if (
         cdr is None
         or cdr.direction != "in"
-        or cdr.call_key != ck
+        or not same_call(p, cdr)
         or cdr.status != "answered"
         or cdr.answer_ts is None
     ):

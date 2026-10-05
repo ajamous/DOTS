@@ -72,6 +72,9 @@ def test_receipts_dual_signed_and_billed_as_expected(
             assert r.agreed_billed_seconds == s["billed"], (s["name"], r.agreed_billed_seconds)
             assert r.proposal.attestation == "A"
             assert r.term_attestation_verified == "A", "Identity header not verified"
+            # the PASSporT origid the originating node signed travels with the
+            # receipt: the correlation key when B2BUAs rewrite Call-IDs
+            assert r.proposal.origid, (s["name"], "no origid")
 
 
 def test_disputes(scenarios: list[dict[str, Any]], logs: Logs) -> None:

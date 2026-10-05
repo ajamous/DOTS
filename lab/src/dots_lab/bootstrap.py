@@ -15,6 +15,7 @@ Layout:
     <node>/tls/              TLS certificate and key (CN = node id)
     <node>/stir/             ES256 STIR/SHAKEN certificate and key
     <node>/token             bearer token for Kamailio -> receipt service
+    <node>/radius.secret     RADIUS shared secret: the operator's softswitch -> its adapter
     <node>/kamailio/node.cfg Kamailio defines and generated routes
     <node>/wallet.key        testnet-only EVM key (stablecoin payout adapter)
     settlement/, observer/   identities for the settlement engine and MCP server
@@ -262,6 +263,7 @@ def bootstrap(state: Path, topo: dict[str, Any], force: bool = False) -> bool:
         tls_fp = _save_pair(d / "tls", *issue(ca_key, ca_cert, node, dns))
         _save_pair(d / "stir", *issue(sti_key, sti_cert, f"SHAKEN {node}", [], tls=False))
         _write(d / "token", secrets.token_urlsafe(32), 0o600)
+        _write(d / "radius.secret", secrets.token_urlsafe(24), 0o600)
         wallet = Account.create()  # testnet-only lab wallet; never funded on mainnet
         _write(d / "wallet.key", "0x" + bytes(wallet.key).hex(), 0o600)
         _write(d / "kamailio/node.cfg", kamailio_node_cfg(node, topo))

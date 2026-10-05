@@ -168,4 +168,11 @@ CREATE TABLE IF NOT EXISTS resolution_approvals (
     approved_ms  bigint NOT NULL
 );
 
+-- PASSporT origid of each CDR and pending proposal: finds our record of a
+-- call when a B2BUA between the operators rewrote the Call-ID (§5.9).
+ALTER TABLE cdrs ADD COLUMN IF NOT EXISTS origid text;
+CREATE INDEX IF NOT EXISTS cdrs_origid ON cdrs (peer_node, origid) WHERE origid IS NOT NULL;
+ALTER TABLE inbox ADD COLUMN IF NOT EXISTS origid text;
+CREATE INDEX IF NOT EXISTS inbox_origid ON inbox (origid) WHERE origid IS NOT NULL;
+
 INSERT INTO schema_version VALUES (1) ON CONFLICT DO NOTHING;

@@ -40,6 +40,41 @@ Each operator runs a **DOTS node**: Kamailio, rtpengine, and a receipt service w
 
 A shared **settlement engine** turns the receipts into daily statements. The ledger proves *what was exchanged and agreed*. It does not route calls, hold presence, or mint anything.
 
+## Deployment: next to your SBC and softswitch
+
+DOTS does not replace your SBC or softswitch. Receipts travel between operators over HTTPS, beside the call path. What DOTS needs from your network is, per call, a call-end event, the STIR/SHAKEN result, and the PASSporT `origid` as a key that survives B2BUAs. You can provide that in either of two ways:
+
+```
+A. DOTS edge (what the lab runs): new peerings, voice-AI platforms
+   customers ─ SBC ─ softswitch ─┬─ SBC ─────────────────── classic interconnects
+                                 └─ DOTS node (Kamailio + rtpengine) ══TLS══ DOTS peers
+
+B. Sidecar: existing carriers, no change to the call path
+   customers ─ SBC ─ softswitch (e.g. Sippy) ─ SBC ══════ peer SBC ─ peer softswitch
+                         │ RADIUS accounting                              │
+                         ▼                                                ▼
+                    dots-radius → receipt service ◀══ HTTPS receipts ══▶ peer receipt service
+```
+
+**A. DOTS edge.** Your softswitch keeps routing and rating, and sends the trunk group for DOTS peers to the DOTS node. The node does mutual-TLS peering, STIR/SHAKEN, transit, SRTP end to end, and media anchoring with packet counts for the fraud gate.
+
+**B. Sidecar.** Your softswitch stays exactly where it is and adds the DOTS adapter as one more RADIUS accounting server.
+- **What it reads.** The adapter (`dots-radius`) reads Sippy's accounting format: Cisco VSAs `h323-*`, the Cisco-AVPair `call-id`, and the calling and called station IDs.
+- **What you add.** Add `dots-origid=<PASSporT origid>` as an extra accounting attribute. That key lets the other operator find the same call even though both sides' B2BUAs rewrote the Call-ID.
+- **Reliable delivery.** Records are verified with the RADIUS shared secret. A record is acknowledged only once it is stored, so nothing is lost if the receipt service is briefly down.
+- **What you give up.** There are no media packet counts, so no `no_media` rule.
+
+```sh
+# Pattern B: one adapter per operator, next to its receipt service
+DOTS_NODE_ID=node-a \
+DOTS_RECEIPTS_URL=http://receipts-a:8080 DOTS_INTERNAL_TOKEN_FILE=/state/node-a/token \
+DOTS_RADIUS_SECRET_FILE=/etc/dots/radius.secret \
+DOTS_RADIUS_PEERS="203.0.113.20=node-b,198.51.100.0/24=node-c" \
+dots-radius                      # listens on UDP 1813; add it as an accounting server in Sippy
+```
+
+The details are in [ARCHITECTURE.md §8.4](docs/ARCHITECTURE.md#84-deployment-where-dots-sits-next-to-an-sbc-and-a-softswitch) and [§5.9](docs/ARCHITECTURE.md#59-correlation-through-b2buas-the-passport-origid). The lab runs both patterns: the Kamailio nodes, plus two simulated Sippy switches sending RADIUS through B2BUAs.
+
 > **Status:** Phase 1 and Phase 2 complete (see [`docs/PLAN.md`](docs/PLAN.md#phase-2)). The only open item is the Open Voice Shield client, which is waiting on the OVS API spec.
 >
 > The 3-operator lab runs end to end on every PR, on Kamailio 6.0 and 6.1:
@@ -183,6 +218,7 @@ docs/                 Architecture, plan, 2018 paper
 | SRTP | SDES-SRTP calls cross both nodes end to end: rtpengine forwards the endpoints' keys unchanged and relays without decrypting, while still counting packets. Both nodes report `e2e`; plain RTP calls never do |
 | Transit | node-a reaches node-c's numbers through node-b: one dual-signed receipt per hop (A→B, B→C), the onward one linked to the upstream leg under node-b's signature, and node-c verifies node-a's attestation |
 | Disputes | Injected 15 s duration skew becomes `duration_mismatch` disputes, excluded from settlement. One is then resolved by the operators (re-proposal, approval of the concession): the resolution receipt lands in both logs and a supplementary statement pays exactly that call |
+| Sidecar (pattern B) | Two simulated Sippy switches send RADIUS accounting for one call through B2BUAs (different Call-IDs, same PASSporT `origid`); both operators' receipt services agree on one dual-signed receipt |
 | Resilience | Kamailio spools every call-end event durably: a receipt service down for a short while recovers its calls and they settle normally; a longer outage still yields signed `missing_countersignature` disputes; all receipt services restart with their logs intact |
 | Fraud gate | A 40-call short-duration burst is held (`short_burst`, `acd_anomaly`); per-route baselines for ACD, ASR and volume |
 | Registry | Members are admitted by a majority of existing members; forged entries appended to the live registry change nothing; each node's TLS certificate is bound to its signing key |

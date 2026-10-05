@@ -53,6 +53,7 @@ from dots_common.protocol import (
     make_dispute,
     make_proposal,
     resolve_against_cdr,
+    same_call,
     verify_dispute,
     verify_proposal,
     verify_receipt,
@@ -289,7 +290,7 @@ class ReceiptNode:
         async with self.db().connection() as conn:
             cur = await conn.execute(
                 "INSERT INTO cdrs (call_key, direction, peer_node, status, period, dest_prefix,"
-                " answer_ts, received_ms, cdr) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+                " answer_ts, received_ms, cdr, origid) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
                 " ON CONFLICT DO NOTHING RETURNING call_key",
                 (
                     cdr.call_key,
@@ -301,6 +302,7 @@ class ReceiptNode:
                     cdr.answer_ts,
                     self.clock(),
                     Jsonb(body(cdr)),
+                    cdr.origid,
                 ),
             )
             inserted = await cur.fetchone() is not None
@@ -330,11 +332,62 @@ class ReceiptNode:
     async def _match_inbox(self, cdr: LocalCdr) -> None:
         async with self.db().connection() as conn:
             cur = await conn.execute(
-                "SELECT proposal FROM inbox WHERE call_key = %s", (cdr.call_key,)
+                "SELECT call_key, proposal FROM inbox WHERE call_key = %s", (cdr.call_key,)
             )
             row = await cur.fetchone()
-        if row is not None:
-            await self._decide(SignedProposal.model_validate(row["proposal"]), cdr)
+            if row is None and cdr.origid:
+                # a B2BUA rewrote the Call-ID: the waiting proposal names the call
+                # by the originator's Call-ID, the PASSporT origid is common to both
+                cur = await conn.execute(
+                    "SELECT call_key, proposal FROM inbox WHERE origid = %s"
+                    " AND proposal->'proposal'->>'orig_node' = %s LIMIT 1",
+                    (cdr.origid, cdr.orig_node),
+                )
+                row = await cur.fetchone()
+        if row is None:
+            return
+        sp = SignedProposal.model_validate(row["proposal"])
+        if row["call_key"] != cdr.call_key:
+            if not same_call(sp.proposal, cdr):
+                return
+            cdr = await self._rebind(cdr, row["call_key"])
+        await self._decide(sp, cdr)
+
+    async def _rebind(self, cdr: LocalCdr, ck: str) -> LocalCdr:
+        """File our CDR under the proposal's call key (matched through origid),
+        so the outcome, the media record and the orphan check all agree."""
+        async with self.db().connection() as conn:
+            await conn.execute(
+                "UPDATE cdrs SET call_key = %s,"
+                " cdr = jsonb_set(cdr, '{call_key}', to_jsonb(%s::text))"
+                " WHERE call_key = %s AND direction = %s",
+                (ck, ck, cdr.call_key, cdr.direction),
+            )
+        log.info("%s: matched %s to %s by PASSporT origid", self.node_id, cdr.call_id, ck)
+        return cdr.model_copy(update={"call_key": ck})
+
+    async def _find_term_cdr(self, sp: SignedProposal) -> LocalCdr | None:
+        """Our inbound CDR for this proposal: by call key (proxies keep the
+        Call-ID), else by PASSporT origid (a B2BUA changed it)."""
+        p = sp.proposal
+        ck = call_key(p.orig_node, p.call_id, p.from_tag)
+        cdr = await self._load_cdr(ck, "in")
+        if cdr is not None or p.origid is None:
+            return cdr
+        async with self.db().connection() as conn:
+            cur = await conn.execute(
+                "SELECT c.cdr FROM cdrs c LEFT JOIN outcomes o ON o.call_key = c.call_key"
+                " WHERE c.direction = 'in' AND c.peer_node = %s AND c.origid = %s"
+                " AND o.call_key IS NULL LIMIT 1",
+                (p.orig_node, p.origid),
+            )
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        found = LocalCdr.model_validate(row["cdr"])
+        if not same_call(p, found):
+            return None
+        return await self._rebind(found, ck)
 
     async def _load_cdr(self, ck: str, direction: str) -> LocalCdr | None:
         async with self.db().connection() as conn:
@@ -430,13 +483,13 @@ class ReceiptNode:
                 done = await self.outcome(ck)
             assert done is not None
             return self._result(done[1])
-        cdr = await self._load_cdr(ck, "in")
+        cdr = await self._find_term_cdr(sp)
         if cdr is None:
             async with self.db().connection() as conn:
                 await conn.execute(
-                    "INSERT INTO inbox (call_key, proposal, received_ms) VALUES (%s,%s,%s)"
-                    " ON CONFLICT DO NOTHING",
-                    (ck, Jsonb(body(sp)), self.clock()),
+                    "INSERT INTO inbox (call_key, proposal, received_ms, origid)"
+                    " VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                    (ck, Jsonb(body(sp)), self.clock(), p.origid),
                 )
             return ProposalResult(202, {"status": "pending"})
         entry = await self._decide(sp, cdr)
@@ -870,7 +923,7 @@ class ReceiptNode:
                     "SELECT 1 FROM resolution_approvals WHERE dispute_leaf = %s", (leaf,)
                 )
                 approved = await cur.fetchone() is not None
-            cdr = await self._load_cdr(ck, "in")
+            cdr = await self._find_term_cdr(req.proposal)
             try:
                 rb = resolve_against_cdr(
                     req, cdr, self.tol, self.ident.signing.key_id, approved=approved

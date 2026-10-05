@@ -130,6 +130,22 @@ All Phase 2 milestones are done, except the Open Voice Shield client (part of M9
 - **What runs meanwhile:** the stub adapter, fail-closed, with config keys in place.
 - **What unblocks it:** the spec itself, or the domain allowed in the environment's network policy.
 
+## After Phase 2
+
+### Deployment pattern B: Sippy RADIUS adapter and `origid` correlation — done
+
+- `dots-radius` (`services/receipts/src/dots_receipts/radius.py`) is a RADIUS accounting server for Sippy-style accounting (Cisco VSAs, per-leg Start/Stop).
+  - It verifies the Request Authenticator, maps legs to DOTS peers by remote address, and turns Stop records into call-end events.
+  - It acknowledges a record only once it is stored.
+- The PASSporT `origid` is the correlation key across B2BUAs. Kamailio puts it into every event, and the proposal carries it under the originator's signature. The terminating node matches its own CDR by `origid` when the Call-IDs differ (ARCHITECTURE.md §5.9).
+- README and ARCHITECTURE.md §8.4 describe the two deployment patterns: a DOTS edge next to the SBC, or a sidecar with no change to the call path.
+- Tests:
+  - Unit: RADIUS parsing and authenticators, Sippy's time format, leg mapping, acknowledge-after-store, B2BUA matching in both orders, and the without-`origid` and wrong-`origid` cases.
+  - Lab: two simulated Sippy switches through B2BUAs produce one dual-signed receipt, and every Kamailio receipt carries an `origid`.
+- Still to do:
+  - Confirm the exact way a production Sippy Softswitch exports the PASSporT `origid` into accounting. The adapter reads it from a `dots-origid` (or `x-dots-ref`) Cisco-AVPair.
+  - Adapters for other switches (CDR files, other RADIUS dialects).
+
 ## Follow-up work (known gaps)
 
 | Gap | Why it matters | Plan |
