@@ -67,7 +67,8 @@ def wait_registered(timeout: float = 90) -> None:
 def sipp(entry: dict, port: int) -> subprocess.Popen[str]:
     cmd = (
         'IP=$(hostname -i | awk "{print \\$1}"); '
-        f"exec sipp -sf /scenarios/uac.xml -s {entry['dial']} -set caller {entry['caller']} "
+        f"exec sipp -sf /scenarios/{entry.get('scenario', 'uac.xml')} -s {entry['dial']} "
+        f"-set caller {entry['caller']} "
         f"-i $IP -mi $IP -p {port} -mp {port + 2000} -m {entry['calls']} -r {entry['rate']} "
         f"-l {entry['calls']} -d {entry['duration_ms']} -nostdin -timeout 120s -timeout_error "
         f"-trace_err -error_file /tmp/{entry['name']}.err {entry['target']}:5060"
@@ -203,7 +204,7 @@ def pytest(groups: list[str], verbose: bool, *paths: str, env: dict[str, str] | 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--groups", default="normal,short_burst,duration_mismatch,recovery,outage")
+    ap.add_argument("--groups", default="normal,srtp,short_burst,duration_mismatch,recovery,outage")
     ap.add_argument("--skip-calls", action="store_true", help="only run the assertions")
     ap.add_argument("--verbose", action="store_true", help="list every assertion")
     args = ap.parse_args()

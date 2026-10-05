@@ -63,7 +63,7 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 | M8 | Bind the TLS client certificate to the node identity in the receipt service | done |
 | M9 | Per-route fraud baselines (done); Open Voice Shield client (waiting on the OVS webhook/API spec) | in progress |
 | M10 | Dispute resolution: re-proposal or adjudication, logged as new entries | done |
-| M11 | SRTP end to end: SRTP-capable test agent, pinned rtpengine passthrough flags | |
+| M11 | SRTP end to end: SRTP-capable test agent, pinned rtpengine passthrough flags | done |
 | M12 | Transit (A→B→C): per-hop receipts chained by a shared reference | |
 | M13 | Kamailio 6.1 once `deb.kamailio.org` is reachable from CI | |
 
@@ -104,11 +104,18 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 - Third-party adjudication is not a protocol role: any ruling still has to end in the two parties' signatures, which is what re-proposal produces.
 - Tests: protocol unit tests (signed bytes unchanged, `resolves` bound by signature, concession rules, window and call checks); service tests (approval flow, no-concession path, missing terminating CDR, reuse of an existing countersignature, refusals and window expiry); engine tests (supplementary statement, open-period deferral, duplicate-call guard within and across statements). Lab: one A→C duration-mismatch dispute is resolved by the operators (approval required, since C measured 15 s more), the receipt is checked in both logs with inclusion proofs, and a final supplementary statement pays exactly that call.
 
+### M11: SRTP end to end — done
+
+- rtpengine flags pinned (`DTLS=off SDES-nonew ICE=remove`). SDES keys are forwarded unchanged and the SRTP packets are relayed without decryption, with media still anchored. The defaults gave hop-by-hop encryption (a DTLS re-offer, or re-keyed SDES), and `passthrough` would have bypassed rtpengine and lost packet counts. ARCHITECTURE.md §8.2 has the details.
+- `media.e2e` is now measured, not hard-coded: the `a=crypto` line is compared before and after rtpengine on the offer and the answer, at every node. It is exposed in `/v1/media`.
+- Lab: new `srtp` group (C→B, 4 SDES-SRTP calls via SIPp's SRTP engine, plus a new C→B rate for 4420). Both nodes report e2e with packets both ways, and every plain RTP call reports false.
+- Not done: DTLS-SRTP end to end. It needs rtpengine not to anchor the media, which trades away the packet counts.
+
 ## Follow-up work (known gaps)
 
 | Gap | Why it matters | Plan |
 |---|---|---|
-| SRTP passthrough verification | The lab uses plain RTP; `media.e2e` is always false | SRTP-capable test agent; pin rtpengine flags |
+| DTLS-SRTP end to end | SDES end to end is verified; with DTLS-SRTP, rtpengine terminates DTLS unless it stops anchoring media | Operator option: passthrough without anchoring (no packet counts) |
 | Registry revocation | Members can be added by majority but not removed; anchors cannot rotate | Signed revocation objects endorsed by a majority; anchor rotation by majority |
 | Transit (A→B→C) | Phase 1 refuses numbers outside the terminating node's own ranges | Per-hop receipts chained by a shared reference |
 | Open Voice Shield | Adapter is a stub (config keys, fail-closed) | Webhook receiver for `call.analyzed` (HMAC-SHA256 `X-OVS-Signature`), verdicts keyed by Call-ID into the gate |

@@ -539,14 +539,27 @@ As built:
 
 In the lab, operator A runs **two instances** (`node-a1`, `node-a2`) that share node-a's identity and receipt service. A's PBX registers on `node-a1` only, while the federation name `node-a` resolves to `node-a2`. Every call into operator A therefore works only if `dmq_usrloc` has replicated the contact, and the lab exercises that on every run.
 
-### 8.2 SRTP and rtpengine (a correction to the brief)
+### 8.2 SRTP and rtpengine (a correction to the brief, verified in Phase 2 M11)
 
-"rtpengine" and "SRTP end to end" conflict as written. When rtpengine anchors a call and *translates* SRTP (SDES re-keying, or terminating DTLS), it holds the media keys, so encryption is hop-by-hop. The target design:
+"rtpengine" and "SRTP end to end" conflict as written. When rtpengine anchors a call and *translates* SRTP (SDES re-keying, or terminating DTLS), it holds the media keys, so encryption is hop by hop. The lab showed both failure modes with default flags:
+- The originating node's rtpengine re-offered an SDES call to the next node as DTLS-SRTP with ICE, and each node terminated DTLS.
+- With DTLS off, each rtpengine replaced the endpoint's SDES key with one of its own.
 
-- When both endpoints offer SRTP with the same profile, rtpengine relays packets **without touching the crypto**, acting only as a NAT-traversal relay. It still sees packet counts and timing for the `no_media` rule.
-- RTP↔SRTP bridging is allowed but marked `media.e2e=false` in the call-end event.
+The flag that sounds right, `passthrough`, is worse: rtpengine then leaves the SDP untouched, the media bypasses it entirely, and the packet counts the fraud gate relies on are lost.
 
-**Status:** the lab runs plain RTP/AVP (SIPp plays G.711 A-law from `g711a.pcap`, and the PBX echoes it). SRTP passthrough is **not yet verified** in the lab, and `media.e2e` is always reported `false`. Verifying it needs an SRTP-capable test agent; this is listed as follow-up work in PLAN.md.
+**What the nodes do** (`RTPE_FLAGS` in `kamailio.cfg`: `DTLS=off SDES-nonew ICE=remove`):
+- With SDES-SRTP on both legs, rtpengine copies the endpoints' `a=crypto` parameters, keys included, to the other leg. Both legs then use the same keys, so rtpengine relays the SRTP packets **without decrypting them** (it decrypts only when keys differ, or with `recrypt`).
+- It still anchors the media, so packet counts keep working for `no_media`.
+- `DTLS=off` stops the DTLS re-offer; `SDES-nonew` stops it adding suites with keys of its own; `ICE=remove` keeps media on rtpengine.
+
+**How `media.e2e` is decided.** It is no longer hard-coded. On every offer and answer, Kamailio compares the SDP's first `a=crypto` line before and after rtpengine (route `RTPE`). `e2e` is true only if the call uses an SRTP profile on both legs and the line was forwarded unchanged in both directions. Every node on the path computes it independently, so a call is end to end only if every node says so.
+
+**What "end to end" means with SDES.** No node decrypts or re-encrypts the media, and only the endpoints and the SIP path ever see the keys. The keys are in the SDP, so they travel inside the signalling: TLS between nodes, and it should be TLS on the access legs too (the lab's access legs are UDP). Confidentiality against the nodes themselves requires DTLS-SRTP between the endpoints. rtpengine can only carry that by not anchoring the media (`passthrough`), which gives up packet counting. That trade-off is left to the operator and is not the default.
+
+**Lab evidence:**
+- The `srtp` scenario group (C→B, `lab/sipp/uac_srtp.xml`; the PBX answers SRTP offers with its own key) places SDES calls. Both nodes must report `e2e: true` with packets counted in both directions.
+- Every plain RTP call must report `e2e: false`.
+- Note on tooling: SIPp 3.7.7's UAS `rtp_echo` action hangs in this build (SIPp's own sample pair fails the same way). The PBX therefore streams its own SRTP pattern rather than echoing.
 
 ### 8.3 Call-end event transport: `http_async_client`, not `evapi`
 

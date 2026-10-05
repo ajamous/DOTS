@@ -255,12 +255,14 @@ def peer_app(node: ReceiptNode) -> FastAPI:
 
     @app.get("/v1/media")
     async def media(who: Caller, period: str) -> dict[str, Any]:
-        """Per-call media packet counts from this node's rtpengine (fraud-gate input)."""
+        """Per-call media packet counts from this node's rtpengine (fraud-gate input), and
+        whether the call's SRTP crossed this node end to end (keys forwarded unchanged)."""
         if role(who) not in ("settlement", "observer"):
             raise HTTPException(403, "settlement or observer role required")
         rows = await _rows(
             "SELECT call_key, direction, peer_node, (cdr->'media'->>'pkts_in')::bigint AS pkts_in,"
-            " (cdr->'media'->>'pkts_out')::bigint AS pkts_out FROM cdrs"
+            " (cdr->'media'->>'pkts_out')::bigint AS pkts_out,"
+            " coalesce((cdr->'media'->>'e2e')::boolean, false) AS e2e FROM cdrs"
             " WHERE period = %s AND status = 'answered' AND cdr->'media' IS NOT NULL"
             " AND jsonb_typeof(cdr->'media') = 'object'",
             (period,),
