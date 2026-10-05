@@ -1,0 +1,30 @@
+# Voice-AI platform as a DOTS operator (README, "Example: a voice AI agent platform").
+#
+# Operator C (node-c, number range +1) becomes your voice-agent platform: the
+# lab's PBX for node-c is switched off and "agent" takes its place. Calls to
+# +1 numbers from other operators' customers are delivered to the agent, and
+# every one of them gets a receipt signed by the carrier's node and by yours.
+#
+#   docker compose -f docker-compose.yml -f examples/voice-agent/compose.yml up -d
+#
+# The agent below is a stand-in (SIPp: registers, answers, plays audio) so the
+# example runs anywhere. Replace the image and command with your agent's SIP
+# endpoint (LiveKit SIP, Jambonz, Asterisk/FreeSWITCH in front of an LLM
+# voice pipeline, ...). What node-c expects from it:
+#   - REGISTER  sip:pbx@node-c  to node-c1:5060 (UDP), from node-c's access
+#     network 172.30.0.96/28; re-register before Expires (120 s).
+#   - Inbound:  answer INVITEs with G.711 A-law (RTP/AVP 8), or SDES-SRTP
+#     (RTP/SAVP) for end-to-end encrypted media.
+#   - Outbound: send INVITE sip:+<E.164>@node-c1:5060 from the same network;
+#     node-c signs the STIR/SHAKEN Identity header for you (attestation A).
+services:
+  pbx-c:
+    profiles: [replaced-by-agent]   # never started: the agent takes its place
+  agent:
+    image: dots-sipp:dev
+    command: ["dots-pbx"]
+    environment: {DOTS_NODE_ID: node-c, REGISTRAR: node-c1}
+    depends_on:
+      node-c1: {condition: service_healthy}
+    networks:
+      sip: {ipv4_address: 172.30.0.99}

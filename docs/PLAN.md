@@ -61,11 +61,11 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 | M6 | Durable call-end spool and reconciler (recover events lost while a receipt service is down) | done |
 | M7 | Signed peer registry: each operator signs its own entry; registry = set of signed entries | done |
 | M8 | Bind the TLS client certificate to the node identity in the receipt service | done |
-| M9 | Per-route fraud baselines (done); Open Voice Shield client (waiting on the OVS webhook/API spec) | in progress |
+| M9 | Per-route fraud baselines; Open Voice Shield client | baselines done; OVS client blocked on the OVS API spec |
 | M10 | Dispute resolution: re-proposal or adjudication, logged as new entries | done |
 | M11 | SRTP end to end: SRTP-capable test agent, pinned rtpengine passthrough flags | done |
 | M12 | Transit (A→B→C): per-hop receipts chained by a shared reference | done |
-| M13 | Kamailio 6.1 once `deb.kamailio.org` is reachable from CI | |
+| M13 | Kamailio 6.1 in CI | done (official 6.1.4 image) |
 
 ### M6: Durable call-end spool — done
 
@@ -116,6 +116,19 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 - Originating nodes can route prefixes through a transit peer (generated `DOTS_VIA`). Transit nodes carry only allow-listed upstream peers (`DOTS_TRANSIT`) towards the number's home node, verify the Identity header and pass it on unchanged, and emit two call-end events (in and out, the second with `upstream_peer`).
 - One receipt per hop. The onward proposal carries `transit_of`, the upstream leg's call key, under the transit node's signature; it is omitted on ordinary proposals. Each hop settles in its own pair statement.
 - Tests: protocol (no field on ordinary proposals, link under signature, `upstream_peer` only on an outbound leg from a third node), bootstrap (longest-prefix via routes, carrier allow-list). Lab: new `transit` group (A dials C's 1212 numbers via B). It asserts an A–B and a B–C receipt per call, each dual-signed in its parties' logs, the link, C verifying A's attestation, and both statements' totals.
+
+### M13: Kamailio 6.1 — done
+
+- `deb.kamailio.org` is still unreachable from CI. The Kamailio project's own release image (`ghcr.io/kamailio/kamailio:6.1.4-noble`) is reachable, which matches the brief's "official images or packages".
+- `node/kamailio/Dockerfile.upstream` builds the node on it and checks every module and tool the routing script uses. A CI job runs the full lab on it, so both 6.0.5 (default, Ubuntu archive, D9) and 6.1.4 are exercised on every PR.
+
+### Phase 2 status
+
+All Phase 2 milestones are done, except the Open Voice Shield client (part of M9).
+- **What is known:** OVS reports verdicts by a signed `call.analyzed` webhook (HMAC-SHA256 in `X-OVS-Signature`).
+- **What is missing:** the payload field names and the exact signature input are in `ovs.telecomsxchange.com/api/openapi.json`, which this build environment cannot reach.
+- **What runs meanwhile:** the stub adapter, fail-closed, with config keys in place.
+- **What unblocks it:** the spec itself, or the domain allowed in the environment's network policy.
 
 ## Follow-up work (known gaps)
 

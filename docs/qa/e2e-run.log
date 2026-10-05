@@ -1,21 +1,60 @@
 registrations visible on every instance (node-a2 via dmq_usrloc)
 == normal: a-b-mobile x10, a-b-london x5, b-c x8, c-a x6, b-a x4
+== srtp: c-b-srtp x4
+== transit: a-c-transit x4
 == short_burst: a-b-burst x40
 == duration_mismatch: a-c-skew x5
-log sizes: {'node-a': '70', 'node-b': '67', 'node-c': '19'}
-log sizes: {'node-a': '70', 'node-b': '67', 'node-c': '19'}
+log sizes: {'node-a': '74', 'node-b': '79', 'node-c': '27'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '0'}
+log sizes: {'node-a': '74', 'node-b': '79', 'node-c': '27'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '0'}
+== recovery: c-b-recovery x3
+   stopping ['receipts-c']
+ Container dots-receipts-c-1 Stopping 
+ Container dots-receipts-c-1 Stopped 
+   receipts-c stays down 5s
+log sizes: {'node-a': '74', 'node-b': '79'} | recovered from spool: {'node-a': '0', 'node-b': '0'}
+   starting ['receipts-c']
+ Container dots-bootstrap-1 Starting 
+ Container dots-bootstrap-1 Started 
+ Container dots-bootstrap-1 Waiting 
+ Container dots-pg-c-1 Waiting 
+ Container dots-pg-c-1 Healthy 
+ Container dots-bootstrap-1 Exited 
+ Container dots-receipts-c-1 Starting 
+ Container dots-receipts-c-1 Started 
+log sizes: {'node-a': '74', 'node-b': '82', 'node-c': '30'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '3'}
+log sizes: {'node-a': '74', 'node-b': '82', 'node-c': '30'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '3'}
+log sizes: {'node-a': '74', 'node-b': '82', 'node-c': '30'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '3'}
+log sizes: {'node-a': '74', 'node-b': '82', 'node-c': '30'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '3'}
 == outage: b-c-outage x3
    stopping ['receipts-c']
-   waiting 35s for the countersignature window to expire
-log sizes: {'node-a': '70', 'node-b': '70'}
+ Container dots-receipts-c-1 Stopping 
+ Container dots-receipts-c-1 Stopped 
+   receipts-c stays down 35s
+log sizes: {'node-a': '74', 'node-b': '85'} | recovered from spool: {'node-a': '0', 'node-b': '0'}
    starting ['receipts-c']
-log sizes: {'node-a': '70', 'node-b': '70', 'node-c': '22'}
-log sizes: {'node-a': '70', 'node-b': '70', 'node-c': '22'}
+ Container dots-bootstrap-1 Starting 
+ Container dots-bootstrap-1 Started 
+ Container dots-bootstrap-1 Waiting 
+ Container dots-pg-c-1 Waiting 
+ Container dots-pg-c-1 Healthy 
+ Container dots-bootstrap-1 Exited 
+ Container dots-receipts-c-1 Starting 
+ Container dots-receipts-c-1 Started 
+log sizes: {'node-a': '74', 'node-b': '85', 'node-c': '33'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '3'}
+log sizes: {'node-a': '74', 'node-b': '85', 'node-c': '33'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '3'}
    restarting every receipt service (log reload from Postgres)
-log sizes: {'node-a': '70', 'node-b': '70', 'node-c': '22'}
-log sizes: {'node-a': '70', 'node-b': '70', 'node-c': '22'}
-log sizes: {'node-a': '70', 'node-b': '70', 'node-c': '22'}
-log sizes: {'node-a': '70', 'node-b': '70', 'node-c': '22'}
+ Container dots-receipts-a-1 Restarting 
+ Container dots-receipts-b-1 Restarting 
+ Container dots-receipts-c-1 Restarting 
+ Container dots-receipts-b-1 Started 
+ Container dots-receipts-a-1 Started 
+ Container dots-receipts-c-1 Started 
+log sizes: {'node-a': '74', 'node-b': '85', 'node-c': '33'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '0'}
+log sizes: {'node-a': '74', 'node-b': '85', 'node-c': '33'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '0'}
+log sizes: {'node-a': '74', 'node-b': '85', 'node-c': '33'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '0'}
+log sizes: {'node-a': '74', 'node-b': '85', 'node-c': '33'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '0'}
+ Container dots-tester-run-21e5531a2296 Creating 
+ Container dots-tester-run-21e5531a2296 Created 
 ============================= test session starts ==============================
 platform linux -- Python 3.12.15, pytest-9.1.1, pluggy-1.6.0 -- /app/.venv/bin/python3
 hypothesis profile 'default'
@@ -23,23 +62,51 @@ rootdir: /app
 configfile: pyproject.toml
 plugins: anyio-4.15.1, asyncio-1.4.0, hypothesis-6.168.3
 asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
-collecting ... collected 18 items
-lab/tests/test_e2e.py::test_every_scenario_produced_its_outcome_in_both_logs PASSED [  5%]
-lab/tests/test_e2e.py::test_receipts_dual_signed_and_billed_as_expected PASSED [ 11%]
-lab/tests/test_e2e.py::test_disputes PASSED                              [ 16%]
-lab/tests/test_e2e.py::test_inclusion_proofs_verify_against_signed_tree_heads PASSED [ 22%]
-lab/tests/test_e2e.py::test_no_full_numbers_in_any_log PASSED            [ 27%]
-lab/tests/test_e2e.py::test_no_integrity_alarms PASSED                   [ 33%]
-lab/tests/test_e2e.py::test_peers_hold_each_others_tree_heads PASSED     [ 38%]
-lab/tests/test_mcp.py::test_tools_are_read_only PASSED                   [ 44%]
-lab/tests/test_mcp.py::test_list_peers PASSED                            [ 50%]
-lab/tests/test_mcp.py::test_get_receipt_and_verify_inclusion PASSED      [ 55%]
-lab/tests/test_mcp.py::test_list_disputes PASSED                         [ 61%]
-lab/tests/test_mcp.py::test_get_settlement PASSED                        [ 66%]
-lab/tests/test_settlement.py::test_one_final_statement_per_pair PASSED   [ 72%]
-lab/tests/test_settlement.py::test_totals_match_scenarios PASSED         [ 77%]
-lab/tests/test_settlement.py::test_short_burst_held_by_fraud_gate PASSED [ 83%]
-lab/tests/test_settlement.py::test_mismatch_disputes_excluded PASSED     [ 88%]
-lab/tests/test_settlement.py::test_payouts PASSED                        [ 94%]
+collecting ... collected 22 items
+
+lab/tests/test_e2e.py::test_every_scenario_produced_its_outcome_in_both_logs PASSED [  4%]
+lab/tests/test_e2e.py::test_receipts_dual_signed_and_billed_as_expected PASSED [  9%]
+lab/tests/test_e2e.py::test_disputes PASSED                              [ 13%]
+lab/tests/test_e2e.py::test_inclusion_proofs_verify_against_signed_tree_heads PASSED [ 18%]
+lab/tests/test_e2e.py::test_no_full_numbers_in_any_log PASSED            [ 22%]
+lab/tests/test_e2e.py::test_no_integrity_alarms PASSED                   [ 27%]
+lab/tests/test_e2e.py::test_peers_hold_each_others_tree_heads PASSED     [ 31%]
+lab/tests/test_e2e.py::test_registry_is_signed_and_resists_appended_forgeries PASSED [ 36%]
+lab/tests/test_e2e.py::test_tls_certificate_bound_to_signer PASSED       [ 40%]
+lab/tests/test_e2e.py::test_srtp_end_to_end_and_plain_rtp_not PASSED     [ 45%]
+lab/tests/test_e2e.py::test_transit_chain_one_receipt_per_hop PASSED     [ 50%]
+lab/tests/test_mcp.py::test_tools_are_read_only PASSED                   [ 54%]
+lab/tests/test_mcp.py::test_list_peers PASSED                            [ 59%]
+lab/tests/test_mcp.py::test_get_receipt_and_verify_inclusion PASSED      [ 63%]
+lab/tests/test_mcp.py::test_list_disputes PASSED                         [ 68%]
+lab/tests/test_mcp.py::test_get_settlement PASSED                        [ 72%]
+lab/tests/test_settlement.py::test_one_final_statement_per_pair PASSED   [ 77%]
+lab/tests/test_settlement.py::test_totals_match_scenarios PASSED         [ 81%]
+lab/tests/test_settlement.py::test_short_burst_held_by_fraud_gate PASSED [ 86%]
+lab/tests/test_settlement.py::test_mismatch_disputes_excluded PASSED     [ 90%]
+lab/tests/test_settlement.py::test_payouts PASSED                        [ 95%]
 lab/tests/test_settlement.py::test_html_statement PASSED                 [100%]
-============================== 18 passed in 4.22s ==============================
+
+============================== 22 passed in 4.09s ==============================
+== resolution: node-a re-proposes SrymxXebj0_n…: needs_approval (agreed 11s is below our 26s)
+   node-c approves: approved
+   node-a re-proposes again: resolved
+log sizes: {'node-a': '75', 'node-b': '85', 'node-c': '34'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '0'}
+log sizes: {'node-a': '75', 'node-b': '85', 'node-c': '34'} | recovered from spool: {'node-a': '0', 'node-b': '0', 'node-c': '0'}
+ Container dots-tester-run-48e9d6fa0be7 Creating 
+ Container dots-tester-run-48e9d6fa0be7 Created 
+============================= test session starts ==============================
+platform linux -- Python 3.12.15, pytest-9.1.1, pluggy-1.6.0 -- /app/.venv/bin/python3
+hypothesis profile 'default'
+rootdir: /app
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0, hypothesis-6.168.3
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 4 items
+
+lab/tests/resolution/test_resolution.py::test_resolution_receipt_in_both_logs PASSED [ 25%]
+lab/tests/resolution/test_resolution.py::test_resolution_inclusion_proofs PASSED [ 50%]
+lab/tests/resolution/test_resolution.py::test_listed_as_resolved PASSED  [ 75%]
+lab/tests/resolution/test_resolution.py::test_supplementary_statement PASSED [100%]
+
+============================== 4 passed in 0.93s ===============================

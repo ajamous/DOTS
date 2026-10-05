@@ -1,0 +1,26 @@
+# DOTS node on Kamailio's own release image (Phase 2 M13).
+#   Default: ghcr.io/kamailio/kamailio:6.1.4-noble, built by the Kamailio
+#   project from its 6.1 packages. Used by the CI job that runs the full lab
+#   on Kamailio 6.1; the default lab image stays on the Ubuntu archive (D9).
+ARG KAMAILIO_IMAGE=ghcr.io/kamailio/kamailio:6.1.4-noble
+FROM ${KAMAILIO_IMAGE}
+# Fail the build, naming what is missing, if the image lacks a module or tool
+# the DOTS routing script or entrypoint needs.
+RUN set -eu; \
+    kamailio -v | head -1; \
+    dir=$(dirname "$(find / -xdev -name tls.so -path '*kamailio*' 2>/dev/null | head -1)"); \
+    [ -d "$dir" ] || { echo "kamailio modules not found" >&2; exit 1; }; \
+    missing=""; \
+    for m in tls tm tmx sl rr pv maxfwd textops textopsx siputils xlog sanity ctl kex corex \
+             cfgutils ipops usrloc registrar dialog jansson http_async_client dmq dmq_usrloc \
+             secsipid rtpengine xhttp db_postgres sqlops; do \
+      [ -f "$dir/$m.so" ] || missing="$missing $m"; \
+    done; \
+    for t in getent awk hostname seq kamcmd; do \
+      command -v "$t" >/dev/null || missing="$missing tool:$t"; \
+    done; \
+    if [ -n "$missing" ]; then echo "missing in $dir:$missing" >&2; exit 1; fi
+COPY node/kamailio/kamailio.cfg /etc/kamailio/kamailio.cfg
+COPY node/kamailio/entrypoint.sh /usr/local/bin/dots-kamailio
+EXPOSE 5060/udp 5061/tcp 8088/tcp
+ENTRYPOINT ["/usr/local/bin/dots-kamailio"]
