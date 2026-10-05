@@ -38,6 +38,7 @@ def receipt_summary(sr: SignedReceipt) -> dict[str, Any]:
         "agreed_billed_seconds": r.agreed_billed_seconds,
         "dest_prefix": p.dest_prefix,
         "rate_id": p.rate_id,
+        "resolves": r.resolves,
         "attestation_claimed": p.attestation,
         "attestation_verified_by_term": r.term_attestation_verified,
     }
@@ -191,14 +192,28 @@ class DotsReader:
                 "verification_errors": errors,
             }
         sd = SignedDispute.model_validate(entry)
-        return {
+        out: dict[str, Any] = {
             "call_key": ck,
             "outcome": "dispute",
             "leaf_hash": lh,
             "leaf_index": data["leaf_index"],
             "dispute": dispute_summary(sd),
             "signature_verified": verify_dispute(self.c.keyring, sd),
+            "resolution": None,
         }
+        res = data.get("resolution")
+        if res:
+            rsr = SignedReceipt.model_validate(res["entry"])
+            errors = verify_receipt(self.c.keyring, rsr)
+            out["resolution"] = {
+                "resolves": res["dispute"],
+                "leaf_hash": b64u(leaf_hash(canonical(res["entry"]))),
+                "leaf_index": res["leaf_index"],
+                "receipt": receipt_summary(rsr),
+                "signatures_verified": not errors,
+                "verification_errors": errors,
+            }
+        return out
 
     def verify_inclusion(
         self,
@@ -286,16 +301,23 @@ class DotsReader:
         params: dict[str, Any] = {"kind": "dispute"}
         if period:
             params["period"] = period
+        resolved = {
+            r["dispute"]: r["receipt"]
+            for r in self.c.get(node_id, "/v1/resolutions", since_ms=0)["resolutions"]
+        }
         out = []
         for e in self.c.all_entries(node_id, **params):
             sd = SignedDispute.model_validate(e["entry"])
             if kind and sd.dispute.kind != kind:
                 continue
+            lh = b64u(leaf_hash(canonical(e["entry"])))
             out.append(
                 {
                     "leaf_index": e["index"],
+                    "leaf_hash": lh,
                     **dispute_summary(sd),
                     "signature_verified": verify_dispute(self.c.keyring, sd),
+                    "resolved_by": resolved.get(lh),
                 }
             )
         return {"node_id": node_id, "count": len(out), "disputes": out[:limit]}

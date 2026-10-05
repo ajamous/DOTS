@@ -283,7 +283,39 @@ A call that is never answered produces no proposal: there is nothing to bill. AS
 }
 ```
 
-The dispute is signed by `raised_by` (context `dots/v1/dispute`), logged by the raiser, sent to the peer, and logged by the peer as received. Phase 1 does not resolve disputes: they are listed in statements as excluded traffic. Resolution (re-proposal, manual settlement) comes later.
+The dispute is signed by `raised_by` (context `dots/v1/dispute`), logged by the raiser, sent to the peer, and logged by the peer as received. A dispute is never paid. It stays in both logs as the call's outcome until the operators resolve it (§5.7).
+
+### 5.6 Why disputes stay in the log
+
+A log is append-only, so "closing" a dispute cannot mean editing or removing it. A resolution is a new entry that refers to the dispute by leaf hash. Anyone holding both logs can then see the disagreement, how it was settled, and that both parties signed the settlement.
+
+### 5.7 Dispute resolution (Phase 2, M10)
+
+A dispute is resolved by **re-proposal**. The result is an ordinary dual-signed receipt that names the dispute it settles:
+
+```json
+{
+  "receipt": {
+    "...": "every field of §5.4",
+    "resolves": "<leaf hash of the dispute (base64url)>"
+  },
+  "sig_term": "…"
+}
+```
+
+`resolves` is covered by the terminating node's signature (context `dots/v1/receipt`), so a resolution cannot be moved to another dispute. On an ordinary receipt the field is absent rather than `null`, so receipts signed before M10 keep exactly the same bytes. Because a resolution is a receipt, every downstream path works unchanged: inclusion proofs, monitoring, settlement, the fraud gate and peer recomputation. `agreed_billed_seconds` is still `min(orig, term)`.
+
+Flow:
+
+1. **The originating operator decides to settle** (`POST /internal/disputes/{leaf}/resolve`). The node re-proposes the call. It reuses the disputed proposal byte for byte when the dispute carries it, and otherwise builds one from its own CDR (a `missing_proposal` dispute). It sends `{dispute, proposal}` to `POST /v1/resolutions` on the terminating node and retries from an outbox until the outcome is final.
+2. **The terminating node checks** the request: the sender is the originator; the dispute and proposal signatures verify; both refer to the same call; the kind is resolvable (not `bad_signature` or `unknown_peer`); and the dispute window (30 days after the period, D2) is still open.
+3. **It countersigns at once only if it concedes nothing.** Its own CDR must match the destination and rate, and the agreed duration may not fall below its own measurement by more than the tolerance. Timing differences alone (`timestamp_skew`) do not block. Otherwise it answers `202 needs_approval` and parks the request for its operator.
+4. **Concessions need the terminating operator's approval** (`POST /internal/disputes/{leaf}/approve`). With approval it signs its real measurement (the minimum rule then pays the originator's figure). If it has no record of the call at all, it signs the originator's timestamps and vouches for no attestation (`term_attestation_verified: "none"`).
+5. **Both nodes log the resolution receipt** and link it to the dispute (`resolutions` table, one per call). `GET /v1/calls/{call_key}` returns the dispute plus the resolution and its inclusion proof. `GET /v1/resolutions` lists them for the settlement engine.
+
+**One receipt per call.** Suppose the terminating node had already countersigned the call, but the originator never got that receipt (it logged `missing_countersignature`). The terminating node then returns that same receipt, not a second one, and both logs end up holding it. The engine enforces the same rule independently (§7.7).
+
+Each step is authorized by the operator who would lose by it. The originator re-proposes, which accepts at most its own figure. The terminating node signs only what it measured, unless its operator approved the concession. Adjudication by a third party is deliberately not part of the protocol. The two parties' signatures are what settlement relies on, so an adjudicator's ruling would still have to end in a re-proposal and a countersignature.
 
 ## 6. Merkle log
 
@@ -326,10 +358,12 @@ Postgres table `log_leaves(idx bigint primary key, leaf_hash bytea unique, kind,
 | GET | `/v1/calls/{call_key}` | Outcome of one call: entry, leaf index, latest STH, inclusion proof |
 | GET | `/v1/alarms` | Integrity alarms and frozen peers |
 | GET | `/v1/cdr-stats?period=` | Attempt, answer and no-media counts per peer/prefix (settlement and observer roles only) |
+| POST | `/v1/resolutions` | Originator to terminator: settle a dispute on a re-proposal (§5.7); answers a receipt, `202 needs_approval` or `409` |
+| GET | `/v1/resolutions?since_ms=` | Resolved disputes: dispute leaf, resolution receipt leaf, period, pair |
 
 **Authentication.** Every `/v1` request is signed: `X-DOTS-Node`, `X-DOTS-Key`, `X-DOTS-Ts` and `X-DOTS-Sig`, an Ed25519 signature (context `dots/v1/request`) over `{method, path+query, ts, sha256(body)}`, valid for ±60 s. The transport is HTTPS with the lab CA, and the server requires a client certificate. Since Phase 2 M8 the two are bound together. `PeerCertH11Protocol` (uvicorn's h11 protocol plus one hook) exposes the verified client certificate through the standard ASGI TLS extension. Every request must then present the certificate whose SHA-256 the signed registry records for the signer (`tls_cert_sha256`), so a stolen signing key is useless without the matching certificate, and a node's certificate cannot carry another node's signature (`DOTS_REQUIRE_TLS_BINDING`, on in the lab). A proposal is accepted only from its `orig_node`, and a dispute only from its `raised_by`. Nodes see only the log entries they are a party to; `settlement` and `observer` roles see all entries. `call_key` = base64url(SHA-256(JCS([orig_node, call_id, from_tag]))).
 
-Local-only (plain HTTP on the node's internal network, bearer token, used by Kamailio): `POST /internal/call-end`, `POST /internal/tick` (run all periodic work now; used by the lab tests), `GET /healthz`.
+Local-only (plain HTTP on the node's internal network, bearer token, used by Kamailio and the operator): `POST /internal/call-end`, `POST /internal/tick` (run all periodic work now; used by the lab tests), `GET /internal/disputes` (open disputes, re-proposals in flight, requests awaiting approval), `POST /internal/disputes/{leaf}/resolve` and `/approve` (§5.7), `GET /healthz`.
 
 **Pseudonymization at ingestion.** On `call-end` the service immediately turns the event into a `LocalCdr`: it derives the period, computes `dest_hash` with the pair/period key, resolves the rate-table prefix and `rate_id`, and then discards the number. The terminating node compares these precomputed values with the proposal. No table in the receipt service holds a full number.
 
@@ -466,6 +500,12 @@ Only `final` statements with a non-zero net are paid. Payout records are idempot
 - **Fraud context**: the receipts of the pair and period, attempt/answer counts from each originating node (`/v1/cdr-stats`), and per-call rtpengine packet counts from each originating node (`/v1/media`). The rules and their thresholds are in `fraud.py` (`RulesConfig`).
 - **Exclusions are explicit**: the statement lists `excluded` leaves (`unmatched`: present in one log only; `already_settled`: covered by an earlier final statement, so re-running a period yields a supplementary statement). Held and rejected receipts are listed with reasons.
 - **Peer recompute**: `POST /v1/statements/ack` on each node, settlement role only. The node checks the engine signature, checks that `log_refs[self]` matches its own tree, and recomputes the receipt sets, both roots, gross totals and net from its own log and rate tables (`dots_common.settlement.recompute_check`). It countersigns with context `dots/v1/statement-ack` only if everything matches; any mismatch raises a `statement_mismatch` alarm. The engine's fraud verdicts are inputs to that recomputation. A peer that disagrees with a hold does not countersign, and the statement stays pending.
+
+### 7.7 Resolutions and supplementary statements (Phase 2, M10)
+
+- A resolution receipt belongs to the call's original period. If that period is still open, the regular run settles it like any other receipt.
+- If the period was already settled, the scheduler (and `POST /v1/supplementary`) picks up new resolutions from every node's `GET /v1/resolutions`. It builds a **supplementary statement** for each affected (pair, period). That statement covers only receipts not settled before; earlier ones are listed as `already_settled`. It is signed, recomputed and countersigned by both peers like any statement, and it counts `resolved` receipts.
+- **One paid receipt per call.** The engine records the call key of every settled receipt. A receipt whose call was already paid through another receipt is excluded as `duplicate_call`, and so are two matched receipts for one call in the same run. Either case can only arise if a peer signed twice, so neither receipt is paid and the operators sort it out.
 
 ## 8. SIP node design
 

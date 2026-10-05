@@ -50,8 +50,9 @@ def build_server(reader: DotsReader) -> MCPServer:
         from_tag: Annotated[str | None, Field(description="SIP From-tag")] = None,
     ) -> dict[str, Any]:
         """Get the outcome of one call from a node's log: a dual-signed receipt or a
-        dispute, with both signatures re-verified. Identify the call by call_key, or by
-        orig_node + call_id + from_tag."""
+        dispute, with both signatures re-verified. A dispute that the operators later
+        resolved also carries the resolution receipt that settles it. Identify the call
+        by call_key, or by orig_node + call_id + from_tag."""
         return await run(reader.get_receipt, node_id, call_key, orig_node, call_id, from_tag)
 
     @mcp.tool(annotations=READ_ONLY)
@@ -86,7 +87,8 @@ def build_server(reader: DotsReader) -> MCPServer:
     ) -> dict[str, Any]:
         """List disputes in a node's log (duration mismatches, missing CDRs or
         countersignatures, bad signatures, rate or destination mismatches), each with
-        its signature verified."""
+        its signature verified and, if resolved, the leaf hash of the receipt that
+        settles it (resolved_by)."""
         return await run(reader.list_disputes, node_id, period, kind, limit)
 
     return mcp

@@ -11,10 +11,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from dots_common.b64 import unb64u
+from dots_common.b64 import b64u, unb64u
 from dots_common.identity import Keyring, verify_request
 from dots_common.models import CallEnd, SignedDispute, SignedProposal, body
-from dots_common.protocol import ProtocolError
+from dots_common.protocol import ProtocolError, ResolutionRefused, ResolutionRequest
 from dots_common.settlement import SignedStatement
 
 from .node import ReceiptNode, parse_entry
@@ -118,6 +118,43 @@ def peer_app(node: ReceiptNode) -> FastAPI:
             cur = await conn.execute(sql, params)
             return list(await cur.fetchall())
 
+    @app.post("/v1/resolutions")
+    async def resolutions_in(request: Request, who: Caller) -> JSONResponse:
+        try:
+            req = ResolutionRequest.model_validate_json(await request.body())
+        except ValidationError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        r = await node.receive_resolution(req, who)
+        return JSONResponse(r.payload, status_code=r.status)
+
+    @app.get("/v1/resolutions")
+    async def resolutions(who: Caller, since_ms: Annotated[int, Query(ge=0)] = 0) -> dict[str, Any]:
+        """Resolved disputes, oldest first: which receipt settles which dispute."""
+        rows = await _rows(
+            "SELECT r.dispute_leaf, r.call_key, r.receipt_leaf, r.period, r.orig_node,"
+            " r.term_node, r.created_ms, l.idx FROM resolutions r"
+            " JOIN log_leaves l ON l.leaf_hash = r.receipt_leaf"
+            " WHERE r.created_ms >= %s ORDER BY r.created_ms LIMIT %s",
+            (since_ms, MAX_ENTRIES),
+        )
+        return {
+            "log_id": node.node_id,
+            "resolutions": [
+                {
+                    "dispute": r["dispute_leaf"],
+                    "call_key": r["call_key"],
+                    "receipt": b64u(bytes(r["receipt_leaf"])),
+                    "receipt_index": r["idx"],
+                    "period": r["period"],
+                    "orig_node": r["orig_node"],
+                    "term_node": r["term_node"],
+                    "created_ms": r["created_ms"],
+                }
+                for r in rows
+                if may_see(who, r["orig_node"], r["term_node"])
+            ],
+        }
+
     @app.get("/v1/entries")
     async def entries(
         who: Caller,
@@ -162,12 +199,31 @@ def peer_app(node: ReceiptNode) -> FastAPI:
         if sth is not None and r["idx"] < sth.sth.tree_size:
             p = node.inclusion(bytes(r["leaf_hash"]), sth.sth.tree_size)
             proof = body(p) if p else None
+        resolution = None
+        res = await _rows(
+            "SELECT r.dispute_leaf, l.idx, l.entry, l.leaf_hash FROM resolutions r"
+            " JOIN log_leaves l ON l.leaf_hash = r.receipt_leaf WHERE r.call_key = %s",
+            (call_key,),
+        )
+        if res:
+            x = res[0]
+            rp = None
+            if sth is not None and x["idx"] < sth.sth.tree_size:
+                p2 = node.inclusion(bytes(x["leaf_hash"]), sth.sth.tree_size)
+                rp = body(p2) if p2 else None
+            resolution = {
+                "dispute": x["dispute_leaf"],
+                "leaf_index": x["idx"],
+                "entry": x["entry"],
+                "inclusion": rp,
+            }
         return {
             "outcome": r["kind"],
             "leaf_index": r["idx"],
             "entry": r["entry"],
             "sth": body(sth) if sth else None,
             "inclusion": proof,
+            "resolution": resolution,
         }
 
     @app.get("/v1/peers/sths")
@@ -273,6 +329,24 @@ def internal_app(
             "spool_recovered": node.spool_recovered,
             "sth": body(s) if s else None,
         }
+
+    @app.get("/internal/disputes", dependencies=[Depends(token)])
+    async def disputes_open() -> dict[str, Any]:
+        return await node.resolution_status()
+
+    @app.post("/internal/disputes/{leaf}/resolve", dependencies=[Depends(token)])
+    async def dispute_resolve(leaf: str) -> JSONResponse:
+        try:
+            return JSONResponse(await node.resolve_dispute(leaf))
+        except ResolutionRefused as exc:
+            return JSONResponse({"error": exc.reason}, status_code=409)
+
+    @app.post("/internal/disputes/{leaf}/approve", dependencies=[Depends(token)])
+    async def dispute_approve(leaf: str) -> JSONResponse:
+        try:
+            return JSONResponse(await node.approve_resolution(leaf))
+        except ResolutionRefused as exc:
+            return JSONResponse({"error": exc.reason}, status_code=409)
 
     @app.get("/internal/log/{index}", dependencies=[Depends(token)])
     async def log_entry(index: int) -> dict[str, Any]:

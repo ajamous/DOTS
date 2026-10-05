@@ -52,17 +52,25 @@ class Clock:
 
 
 class Router(httpx.AsyncBaseTransport):
-    """Routes http://<node-id>/... to that node's ASGI app; hosts in ``down`` fail."""
+    """Routes http://<node-id>/... to that node's ASGI app; hosts in ``down`` fail.
+
+    Hosts in ``drop_replies`` process the request but the reply is lost.
+    """
 
     def __init__(self) -> None:
         self.apps: dict[str, httpx.ASGITransport] = {}
         self.down: set[str] = set()
+        self.drop_replies: set[str] = set()
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         host = request.url.host
         if host in self.down or host not in self.apps:
             raise httpx.ConnectError(f"{host} unreachable", request=request)
-        return await self.apps[host].handle_async_request(request)
+        response = await self.apps[host].handle_async_request(request)
+        if host in self.drop_replies:
+            await response.aread()
+            raise httpx.ReadError(f"{host}: reply lost", request=request)
+        return response
 
 
 def rate_table(idents: dict[str, NodeIdentity], a: str, b: str) -> SignedRateTable:

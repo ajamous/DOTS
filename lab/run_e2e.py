@@ -8,6 +8,10 @@
    countersignature window, brings it back, then restarts every receipt service.
 3. Flush the receipt services (exchange, STH, monitoring) a few times.
 4. Run the assertions in lab/tests inside the "tester" container.
+5. Resolve one duration-mismatch dispute as the operators would (originator
+   re-proposes, terminator approves the concession), then run the
+   assertions in lab/tests/resolution (receipt in both logs, supplementary
+   statement).
 """
 
 import argparse
@@ -29,6 +33,17 @@ r = urllib.request.Request('http://127.0.0.1:8080/internal/tick', method='POST',
                            headers={{'authorization': 'Bearer ' + t}})
 d = json.load(urllib.request.urlopen(r, timeout=30))
 print(d['tree_size'], d.get('spool_recovered', 0))
+"""
+
+INTERNAL = """
+import json, sys, urllib.request
+t = open('/state/{node}/token').read().strip()
+r = urllib.request.Request('http://127.0.0.1:8080' + sys.argv[1], method=sys.argv[2],
+                           headers={{'authorization': 'Bearer ' + t}})
+try:
+    print(urllib.request.urlopen(r, timeout=30).read().decode())
+except urllib.error.HTTPError as e:
+    print(e.read().decode())
 """
 
 
@@ -127,6 +142,65 @@ def flush(rounds: int = 4, pause: float = 2.0, skip: set[str] | None = None) -> 
         time.sleep(pause)
 
 
+def internal(node: str, method: str, path: str) -> dict:
+    out = sh(
+        "exec",
+        "-T",
+        RECEIPTS[node],
+        "python",
+        "-c",
+        INTERNAL.format(node=node),
+        path,
+        method,
+        capture=True,
+    )
+    return json.loads(out.stdout)
+
+
+def resolve_one() -> str:
+    """A re-proposes one A->C duration-mismatch call; C approves its concession."""
+    open_ = internal("node-a", "GET", "/internal/disputes")["open"]
+    leaf = next(
+        d["dispute"]
+        for d in open_
+        if d["kind"] == "duration_mismatch" and d["term_node"] == "node-c" and d["resolvable"]
+    )
+    first = internal("node-a", "POST", f"/internal/disputes/{leaf}/resolve")
+    print(
+        f"== resolution: node-a re-proposes {leaf[:12]}…: {first['status']} ({first.get('detail')})"
+    )
+    if first["status"] != "needs_approval":
+        sys.exit(f"expected the terminator to ask for approval, got {first}")
+    print(
+        "   node-c approves:",
+        internal("node-c", "POST", f"/internal/disputes/{leaf}/approve")["status"],
+    )
+    second = internal("node-a", "POST", f"/internal/disputes/{leaf}/resolve")
+    print("   node-a re-proposes again:", second["status"])
+    if second["status"] != "resolved":
+        sys.exit(f"resolution failed: {second}")
+    return leaf
+
+
+def pytest(groups: list[str], verbose: bool, *paths: str, env: dict[str, str] | None = None) -> int:
+    extra = [x for k, v in (env or {}).items() for x in ("-e", f"{k}={v}")]
+    r = sh(
+        "run",
+        "--rm",
+        "-e",
+        f"DOTS_E2E_GROUPS={','.join(groups)}",
+        *extra,
+        "tester",
+        "pytest",
+        "-v" if verbose else "-q",
+        "-p",
+        "no:cacheprovider",
+        *paths,
+        check=False,
+    )
+    return r.returncode
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--groups", default="normal,short_burst,duration_mismatch,recovery,outage")
@@ -146,20 +220,19 @@ def main() -> None:
                 run_group(g, scenarios[g])
             time.sleep(3)  # let BYE-time events reach the receipt services
         flush()
-    r = sh(
-        "run",
-        "--rm",
-        "-e",
-        f"DOTS_E2E_GROUPS={','.join(groups)}",
-        "tester",
-        "pytest",
-        "-v" if args.verbose else "-q",
-        "-p",
-        "no:cacheprovider",
-        "lab/tests",
-        check=False,
+    rc = pytest(groups, args.verbose, "lab/tests", "--ignore=lab/tests/resolution")
+    if rc or "duration_mismatch" not in groups:
+        sys.exit(rc)
+    leaf = resolve_one()
+    flush(rounds=2)
+    sys.exit(
+        pytest(
+            groups,
+            args.verbose,
+            "lab/tests/resolution",
+            env={"DOTS_RESOLVED_DISPUTE": leaf},
+        )
     )
-    sys.exit(r.returncode)
 
 
 if __name__ == "__main__":

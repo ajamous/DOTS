@@ -7,9 +7,13 @@ re-verify a receipt end to end with ``verify_receipt``.
 """
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
+from .b64 import b64u
 from .dest import dest_hash, normalize_e164, period_key
 from .identity import Keyring, NodeIdentity
+from .jcs import canonical
+from .merkle import leaf_hash
 from .models import (
     CallEnd,
     DisputeBody,
@@ -21,6 +25,7 @@ from .models import (
     SignedProposal,
     SignedRateTable,
     SignedReceipt,
+    Strict,
     billed_seconds,
     body,
     call_key,
@@ -237,3 +242,133 @@ def verify_dispute(keyring: Keyring, sd: SignedDispute) -> bool:
     if d.raised_by not in (d.orig_node, d.term_node):
         return False
     return keyring.verify(d.raised_by, d.key_id, Context.DISPUTE, body(d), sd.sig)
+
+
+# ----------------------------------------------------------------------------
+# Dispute resolution (§5.7)
+
+# Disputes that a re-proposal can resolve. A bad signature or an unknown peer
+# is an integrity problem, not a disagreement about a call.
+RESOLVABLE: frozenset[str] = frozenset(
+    {
+        "missing_term_cdr",
+        "missing_proposal",
+        "missing_countersignature",
+        "duration_mismatch",
+        "timestamp_skew",
+        "dest_mismatch",
+        "rate_mismatch",
+    }
+)
+DAY_MS = 86_400_000
+
+
+class ResolutionRequest(Strict):
+    """Originating node -> terminating node: settle this dispute on this proposal."""
+
+    dispute: SignedDispute
+    proposal: SignedProposal
+
+
+class ResolutionRefused(Exception):
+    def __init__(self, reason: str, *, needs_approval: bool = False) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.needs_approval = needs_approval
+
+
+def dispute_leaf(sd: SignedDispute) -> str:
+    """The dispute's Merkle leaf hash (b64u): how resolutions refer to it."""
+    return b64u(leaf_hash(canonical(body(sd))))
+
+
+def in_dispute_window(period: str, now_ms: int, window_days: int) -> bool:
+    """True until ``window_days`` after the end of the dispute's period (D2)."""
+    start = int(datetime.strptime(period, "%Y-%m-%d").replace(tzinfo=UTC).timestamp() * 1000)
+    return now_ms <= start + DAY_MS + window_days * DAY_MS
+
+
+def check_resolution_request(
+    keyring: Keyring, req: ResolutionRequest, now_ms: int, window_days: int
+) -> None:
+    """Checks that do not depend on the terminating node's own records."""
+    d = req.dispute.dispute
+    p = req.proposal.proposal
+    if d.kind not in RESOLVABLE:
+        raise ResolutionRefused(f"{d.kind} disputes are not resolvable")
+    if (d.call_id, d.from_tag, d.orig_node, d.term_node, d.period) != (
+        p.call_id,
+        p.from_tag,
+        p.orig_node,
+        p.term_node,
+        p.period,
+    ):
+        raise ResolutionRefused("proposal is for another call")
+    if not verify_dispute(keyring, req.dispute):
+        raise ResolutionRefused("bad dispute signature")
+    if not verify_proposal(keyring, req.proposal):
+        raise ResolutionRefused("bad proposal signature")
+    if not in_dispute_window(d.period, now_ms, window_days):
+        raise ResolutionRefused("dispute window closed")
+
+
+def resolve_against_cdr(
+    req: ResolutionRequest,
+    cdr: LocalCdr | None,
+    tol: Tolerances,
+    term_key_id: str,
+    *,
+    approved: bool,
+) -> ReceiptBody:
+    """Terminating side of a resolution: the receipt body to countersign.
+
+    ``agreed_billed_seconds`` stays ``min(orig, term)``. Without operator
+    approval the terminating node only countersigns what it would have
+    accepted anyway, give or take the timing checks that caused the dispute:
+    its own CDR must match on destination and rate, and the agreed duration
+    may not fall below its own measurement by more than the tolerance. Any
+    concession (a shorter duration, the originator's rate or destination, or
+    a call it has no record of) needs the operator's approval, given through
+    the internal API. A terminating node with no record of the call signs the
+    originator's timestamps as its own and vouches for no attestation.
+    """
+    sp = req.proposal
+    p = sp.proposal
+    ck = call_key(p.orig_node, p.call_id, p.from_tag)
+    if (
+        cdr is None
+        or cdr.direction != "in"
+        or cdr.call_key != ck
+        or cdr.status != "answered"
+        or cdr.answer_ts is None
+    ):
+        if not approved:
+            raise ResolutionRefused("no answered CDR for this call", needs_approval=True)
+        term = (p.answer_ts, p.end_ts, p.orig_billed_seconds, "none")
+    else:
+        tb = billed_seconds(cdr.answer_ts, cdr.end_ts)
+        term = (cdr.answer_ts, cdr.end_ts, tb, cdr.attestation)
+        if not approved:
+            if cdr.period != p.period or cdr.dest_hash != p.dest_hash:
+                raise ResolutionRefused("destination differs", needs_approval=True)
+            if (cdr.rate_table, cdr.rate_id, cdr.dest_prefix) != (
+                p.rate_table,
+                p.rate_id,
+                p.dest_prefix,
+            ):
+                raise ResolutionRefused("rate differs", needs_approval=True)
+            if tb > p.orig_billed_seconds and not tol.duration_ok(p.orig_billed_seconds, tb):
+                raise ResolutionRefused(
+                    f"agreed {p.orig_billed_seconds}s is below our {tb}s", needs_approval=True
+                )
+    return ReceiptBody(
+        proposal=p,
+        sig_orig=sp.sig_orig,
+        term_answer_ts=term[0],
+        term_end_ts=term[1],
+        term_billed_seconds=term[2],
+        term_attestation_verified=term[3],  # type: ignore[arg-type]
+        agreed_billed_seconds=min(p.orig_billed_seconds, term[2]),
+        term_key_id=term_key_id,
+        resolves=dispute_leaf(req.dispute),
+    )

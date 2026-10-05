@@ -130,4 +130,42 @@ CREATE TABLE IF NOT EXISTS spool_cursor (
     updated_ms   bigint NOT NULL
 );
 
+-- Dispute resolution (ARCHITECTURE.md §5.7). One resolution per call: the
+-- receipt (in log_leaves) that settles a logged dispute.
+CREATE TABLE IF NOT EXISTS resolutions (
+    dispute_leaf text PRIMARY KEY,
+    call_key     text NOT NULL UNIQUE,
+    receipt_leaf bytea NOT NULL,
+    period       text NOT NULL,
+    orig_node    text NOT NULL,
+    term_node    text NOT NULL,
+    created_ms   bigint NOT NULL
+);
+CREATE INDEX IF NOT EXISTS resolutions_created ON resolutions (created_ms);
+
+-- Originating side: re-proposals on their way to the terminating node.
+CREATE TABLE IF NOT EXISTS resolution_outbox (
+    dispute_leaf text PRIMARY KEY,
+    peer_node    text NOT NULL,
+    request      jsonb NOT NULL,
+    created_ms   bigint NOT NULL,
+    next_try_ms  bigint NOT NULL,
+    attempts     int NOT NULL DEFAULT 0,
+    state        text NOT NULL DEFAULT 'pending'
+                 CHECK (state IN ('pending', 'needs_approval', 'resolved', 'refused', 'expired')),
+    detail       text NOT NULL DEFAULT ''
+);
+
+-- Terminating side: re-proposals waiting for the operator, and its approvals.
+CREATE TABLE IF NOT EXISTS resolution_inbox (
+    dispute_leaf text PRIMARY KEY,
+    request      jsonb NOT NULL,
+    reason       text NOT NULL,
+    received_ms  bigint NOT NULL
+);
+CREATE TABLE IF NOT EXISTS resolution_approvals (
+    dispute_leaf text PRIMARY KEY,
+    approved_ms  bigint NOT NULL
+);
+
 INSERT INTO schema_version VALUES (1) ON CONFLICT DO NOTHING;

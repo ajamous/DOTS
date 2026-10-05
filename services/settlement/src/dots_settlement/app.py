@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 
 from dots_common.identity import verify_request
 from dots_common.models import body
+from dots_common.settlement import statement_id
 
 from .engine import Engine, SettlementError
 from .payout import Payout, PayoutError
@@ -79,11 +80,21 @@ def create_app(engine: Engine, payouts: dict[str, Payout], lab_mode: bool = Fals
             raise HTTPException(403, "observer role required")
         if force and not lab_mode:
             raise HTTPException(403, "force is only available in lab mode")
-        out = engine.run(period, force=force)
+        return {"period": period, "statements": _results(engine.run(period, force=force))}
+
+    @app.post("/v1/supplementary")
+    def supplementary(who: Caller, force: bool = False) -> dict[str, Any]:
+        """Settle disputes resolved after their period was settled (also scheduled)."""
+        p = keyring.peer(who)
+        if p is None or p.role not in ("observer", "settlement"):
+            raise HTTPException(403, "observer role required")
+        if force and not lab_mode:
+            raise HTTPException(403, "force is only available in lab mode")
+        return {"statements": _results(engine.supplementary(force=force))}
+
+    def _results(out: list[Any]) -> list[dict[str, Any]]:
         results = []
         for ss in out:
-            from dots_common.settlement import statement_id
-
             sid = statement_id(ss.statement)
             paid = []
             if ss.final and ss.statement.net.payer is not None:
@@ -101,7 +112,7 @@ def create_app(engine: Engine, payouts: dict[str, Payout], lab_mode: bool = Fals
                     "payouts": paid,
                 }
             )
-        return {"period": period, "statements": results}
+        return results
 
     @app.exception_handler(SettlementError)
     def _settlement_error(_: Request, exc: SettlementError) -> Any:

@@ -87,7 +87,7 @@ class HeldItem(Strict):
 
 class ExcludedItem(Strict):
     leaf_hash: B64
-    reason: Literal["unmatched", "already_settled"]
+    reason: Literal["unmatched", "already_settled", "duplicate_call"]
 
 
 class Direction(Strict):
