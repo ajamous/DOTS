@@ -13,6 +13,7 @@
     {"payer": "node-b", "payee": "node-a", "prefix": "4479", "rate_per_min": "0.0280", "interval_1": 6, "interval_n": 6},
     {"payer": "node-b", "payee": "node-c", "prefix": "1", "rate_per_min": "0.0060", "interval_1": 6, "interval_n": 6},
     {"payer": "node-c", "payee": "node-b", "prefix": "4477", "rate_per_min": "0.0310", "interval_1": 6, "interval_n": 6},
+    {"payer": "node-c", "payee": "node-b", "prefix": "4420", "rate_per_min": "0.0120", "interval_1": 6, "interval_n": 6},
     {"payer": "node-c", "payee": "node-a", "prefix": "4479", "rate_per_min": "0.0290", "interval_1": 6, "interval_n": 6},
     {"payer": "node-a", "payee": "node-c", "prefix": "1", "rate_per_min": "0.0950", "interval_1": 6, "interval_n": 6}
   ]

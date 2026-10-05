@@ -1,5 +1,5 @@
 {
-  "comment": "SIPp call mixes for the lab. Durations avoid whole seconds so ceil() is stable under jitter: 7400 ms bills 8 s, 10400 ms bills 11 s. Each (orig, term, prefix) is used by exactly one scenario so results can be attributed without call ids. The outage group stops the terminating receipt service during the calls: the originating node must raise signed missing_countersignature disputes and deliver them once the peer is back. The recovery group stops the originating receipt service only briefly: its Kamailio's call-end events are recovered from the durable spool and the calls settle as normal receipts.",
+  "comment": "SIPp call mixes for the lab. Durations avoid whole seconds so ceil() is stable under jitter: 7400 ms bills 8 s, 10400 ms bills 11 s. Each (orig, term, prefix) is used by exactly one scenario so results can be attributed without call ids. The outage group stops the terminating receipt service during the calls: the originating node must raise signed missing_countersignature disputes and deliver them once the peer is back. The recovery group stops the originating receipt service only briefly: its Kamailio's call-end events are recovered from the durable spool and the calls settle as normal receipts. The srtp group places SDES-SRTP calls (lab/sipp/uac_srtp.xml): both nodes must report them end to end (rtpengine forwarded the keys unchanged and never decrypted), while every plain RTP call reports e2e false.",
   "groups": {
     "normal": [
       {
@@ -76,6 +76,25 @@
         "prefix": "4479",
         "expect": "receipt",
         "billed": 11
+      }
+    ],
+    "srtp": [
+      {
+        "name": "c-b-srtp",
+        "uac": "uac-c",
+        "target": "node-c1",
+        "scenario": "uac_srtp.xml",
+        "dial": "442079460000",
+        "caller": "14155550103",
+        "calls": 4,
+        "rate": 2,
+        "duration_ms": 10400,
+        "orig": "node-c",
+        "term": "node-b",
+        "prefix": "4420",
+        "expect": "receipt",
+        "billed": 11,
+        "srtp": true
       }
     ],
     "short_burst": [

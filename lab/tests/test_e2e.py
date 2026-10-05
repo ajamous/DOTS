@@ -9,7 +9,7 @@ from dots_common.b64 import b64u, unb64u
 from dots_common.client import DotsClient
 from dots_common.jcs import canonical
 from dots_common.merkle import leaf_hash, verify_inclusion
-from dots_common.models import SignedReceipt, SignedSTH, body
+from dots_common.models import SignedReceipt, SignedSTH, body, call_key
 from dots_common.protocol import verify_receipt
 from dots_common.signing import Context
 
@@ -166,3 +166,39 @@ def test_tls_certificate_bound_to_signer(client: DotsClient) -> None:
     req = client.http.build_request("GET", client.url("node-b") + "/v1/sth")
     req.headers.update(sign_request(node_a, "GET", req.url.raw_path.decode(), b""))
     assert client.http.send(req).status_code == 403
+
+
+def test_srtp_end_to_end_and_plain_rtp_not(
+    client: DotsClient, scenarios: list[dict[str, Any]], logs: Logs
+) -> None:
+    """SDES-SRTP calls cross both nodes with the endpoints' keys unchanged (no
+    node re-keys or decrypts) and media still anchored on rtpengine; plain RTP
+    calls never claim end-to-end encryption."""
+    period = next(
+        e["entry"]["receipt"]["proposal"]["period"]
+        for es in logs.values()
+        for e in es
+        if "receipt" in e["entry"]
+    )
+    media = {}
+    for n in client.node_ids():
+        rows = client.get(n, "/v1/media", period=period)["media"]
+        media[n] = {(m["call_key"], m["direction"]): m for m in rows}
+    srtp_calls = 0
+    for s in scenarios:
+        if s["expect"] != "receipt":
+            continue
+        for e in matching(logs[s["orig"]], s):
+            if "receipt" not in e["entry"]:
+                continue
+            p = e["entry"]["receipt"]["proposal"]
+            ck = call_key(p["orig_node"], p["call_id"], p["from_tag"])
+            for node, direction in ((s["orig"], "out"), (s["term"], "in")):
+                m = media[node].get((ck, direction))
+                assert m is not None, (s["name"], node)
+                assert m["e2e"] is bool(s.get("srtp")), (s["name"], node, m)
+                if s.get("srtp"):
+                    assert m["pkts_in"] > 0 and m["pkts_out"] > 0, (s["name"], node, m)
+                    srtp_calls += 1
+    if any(s.get("srtp") for s in scenarios):
+        assert srtp_calls == 2 * sum(s["calls"] for s in scenarios if s.get("srtp"))
