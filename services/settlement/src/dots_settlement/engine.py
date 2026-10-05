@@ -36,7 +36,7 @@ from dots_common.settlement import (
 )
 from dots_common.signing import Context
 
-from .fraud import CompositeGate, Media, PeriodContext
+from .fraud import Baseline, CompositeGate, Media, PeriodContext, Route
 
 log = logging.getLogger("dots.settlement")
 ENGINE_VERSION = "settlement@0.1.0"
@@ -55,6 +55,17 @@ CREATE INDEX IF NOT EXISTS statements_pp ON statements (pair, period);
 CREATE TABLE IF NOT EXISTS settled (
     leaf_hash TEXT PRIMARY KEY,
     statement_id TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS route_daily (
+    period TEXT NOT NULL,
+    orig TEXT NOT NULL,
+    term TEXT NOT NULL,
+    prefix TEXT NOT NULL,
+    calls INTEGER NOT NULL,
+    seconds INTEGER NOT NULL,
+    attempts INTEGER NOT NULL,
+    answered INTEGER NOT NULL,
+    PRIMARY KEY (period, orig, term, prefix)
 );
 CREATE TABLE IF NOT EXISTS payouts (
     statement_id TEXT NOT NULL,
@@ -166,6 +177,38 @@ class Store:
             )
         return record
 
+    def record_routes(self, period: str, rows: dict[Route, tuple[int, int, int, int]]) -> None:
+        """Store a period's per-route metrics: (calls, seconds, attempts, answered)."""
+        with self.db:
+            for (o, t, pfx), (calls, secs, att, ans) in rows.items():
+                self.db.execute(
+                    "INSERT INTO route_daily VALUES (?,?,?,?,?,?,?,?)"
+                    " ON CONFLICT(period, orig, term, prefix) DO UPDATE SET calls=excluded.calls,"
+                    " seconds=excluded.seconds, attempts=excluded.attempts,"
+                    " answered=excluded.answered",
+                    (period, o, t, pfx, calls, secs, att, ans),
+                )
+
+    def baselines(self, period: str, window_days: int = 7) -> dict[Route, Baseline]:
+        """Trailing means over the ``window_days`` before ``period`` (days with traffic)."""
+        start, _ = period_bounds(period)
+        first = dt.datetime.fromtimestamp((start - window_days * 86_400_000) / 1000, dt.UTC)
+        rows = self.db.execute(
+            "SELECT orig, term, prefix, count(*), sum(calls), sum(seconds), sum(attempts),"
+            " sum(answered) FROM route_daily WHERE period >= ? AND period < ?"
+            " GROUP BY orig, term, prefix",
+            (first.strftime("%Y-%m-%d"), period),
+        ).fetchall()
+        out: dict[Route, Baseline] = {}
+        for o, t, pfx, days, calls, secs, att, ans in rows:
+            out[(o, t, pfx)] = Baseline(
+                days=days,
+                calls_per_day=calls / days,
+                acd=secs / calls if calls else 0.0,
+                asr=ans / att if att else None,
+            )
+        return out
+
     def payouts(self, sid: str) -> list[dict[str, Any]]:
         rows = self.db.execute(
             "SELECT adapter, created_ts, record FROM payouts WHERE statement_id = ?", (sid,)
@@ -270,13 +313,29 @@ class Engine:
             for row in self.client.get(n, "/v1/cdr-stats", period=period)["stats"]:
                 if row["direction"] != "out" or row["peer_node"] not in pair:
                     continue
-                key = (n, row["prefix"])
+                key = (n, row["peer_node"], row["prefix"])
                 att, ans = ctx.asr.get(key, (0, 0))
                 ctx.asr[key] = (att + row["attempts"], ans + row["answered"])
             for m in self.client.get(n, "/v1/media", period=period)["media"]:
                 if m["direction"] == "out" and m["peer_node"] in pair:
                     ctx.media[m["call_key"]] = Media(m["pkts_in"], m["pkts_out"])
+        ctx.baselines = {
+            r: b for r, b in self.store.baselines(period).items() if set(r[:2]) == set(pair)
+        }
         return ctx
+
+    def record_period(self, period: str, ctx: PeriodContext) -> None:
+        """Feed this period's per-route metrics into the baseline history."""
+        rows: dict[Route, list[int]] = {}
+        for r in ctx.receipts:
+            p = r.receipt.proposal
+            m = rows.setdefault((p.orig_node, p.term_node, p.dest_prefix), [0, 0, 0, 0])
+            m[0] += 1
+            m[1] += r.receipt.agreed_billed_seconds
+        for route, (att, ans) in ctx.asr.items():
+            m = rows.setdefault(route, [0, 0, 0, 0])
+            m[2], m[3] = att, ans
+        self.store.record_routes(period, {k: (v[0], v[1], v[2], v[3]) for k, v in rows.items()})
 
     # ------------------------------------------------------------------ statements
 
@@ -298,6 +357,7 @@ class Engine:
         ]
         excluded.sort(key=lambda x: x.leaf_hash)
         ctx = self.context(pair, period, got.receipts)
+        self.record_period(period, ctx)
         scored = []
         for r in fresh:
             s = self.gate.score(r, ctx)

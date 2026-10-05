@@ -31,11 +31,26 @@ class Media:
     pkts_out: int
 
 
+@dataclass(frozen=True)
+class Baseline:
+    """Trailing per-route history: means over the days that had traffic."""
+
+    days: int
+    calls_per_day: float
+    acd: float  # mean agreed seconds per answered call
+    asr: float | None  # answered / attempts, when attempts were seen
+
+
+Route = tuple[str, str, str]  # (orig_node, term_node, dest_prefix)
+
+
 @dataclass
 class PeriodContext:
     receipts: Sequence[SignedReceipt]
-    # (orig_node, dest_prefix) -> (attempts, answered), from the originating node's CDRs
-    asr: dict[tuple[str, str], tuple[int, int]] = field(default_factory=dict)
+    # route -> (attempts, answered), from the originating node's CDRs
+    asr: dict[Route, tuple[int, int]] = field(default_factory=dict)
+    # route -> trailing baseline (absent until enough history exists)
+    baselines: dict[Route, Baseline] = field(default_factory=dict)
     # call_key -> media seen by the originating node's rtpengine
     media: dict[str, Media] = field(default_factory=dict)
     _cache: dict[str, object] = field(default_factory=dict)
@@ -61,6 +76,12 @@ class RulesConfig:
     skew_min_sample: int = 20
     skew_positive_fraction: float = 0.8
     skew_mean_seconds: float = 1.0
+    # Per-route baselines (used once a route has baseline_min_days of history)
+    baseline_min_days: int = 3
+    acd_drop_ratio: float = 0.5  # today's ACD below half the route's usual
+    asr_drop_ratio: float = 0.5  # today's ASR below half the route's usual
+    volume_spike_factor: float = 5.0  # 5x the route's usual daily calls ...
+    volume_min_calls: int = 50  # ... and at least this many
 
 
 def _key(r: SignedReceipt) -> tuple[str, str, str]:
@@ -147,12 +168,28 @@ class LocalRules:
 
         if receipt.sig_term in self._burst_members(ctx):
             flag("short_burst")
-        n, acd = self._acd(ctx).get(_key(receipt), (0, 0.0))
-        if n >= c.acd_min_sample and acd < c.acd_min_seconds:
-            flag("acd_anomaly")
-        attempts, answered = ctx.asr.get((p.orig_node, p.dest_prefix), (0, 0))
-        if attempts >= c.asr_min_attempts and answered / attempts < c.asr_min:
-            flag("asr_anomaly")
+        route = _key(receipt)
+        base = ctx.baselines.get(route)
+        if base is not None and base.days < c.baseline_min_days:
+            base = None
+        n, acd = self._acd(ctx).get(route, (0, 0.0))
+        if n >= c.acd_min_sample:
+            # against the route's own history when there is one, else absolute
+            floor = c.acd_drop_ratio * base.acd if base else c.acd_min_seconds
+            if acd < floor:
+                flag("acd_anomaly")
+        attempts, answered = ctx.asr.get(route, (0, 0))
+        if attempts >= c.asr_min_attempts:
+            asr = answered / attempts
+            floor = c.asr_drop_ratio * base.asr if base and base.asr is not None else c.asr_min
+            if asr < floor:
+                flag("asr_anomaly")
+        if (
+            base is not None
+            and n >= c.volume_min_calls
+            and n > c.volume_spike_factor * base.calls_per_day
+        ):
+            flag("volume_spike")
         if any(
             p.dest_prefix.startswith(h) or h.startswith(p.dest_prefix) for h in c.high_risk_prefixes
         ):

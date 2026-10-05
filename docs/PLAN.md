@@ -61,7 +61,7 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 | M6 | Durable call-end spool and reconciler (recover events lost while a receipt service is down) | done |
 | M7 | Signed peer registry: each operator signs its own entry; registry = set of signed entries | done |
 | M8 | Bind the TLS client certificate to the node identity in the receipt service | done |
-| M9 | Open Voice Shield client; per-prefix fraud baselines instead of fixed thresholds | next |
+| M9 | Per-route fraud baselines (done); Open Voice Shield client (waiting on the OVS webhook/API spec) | in progress |
 | M10 | Dispute resolution: re-proposal or adjudication, logged as new entries | |
 | M11 | SRTP end to end: SRTP-capable test agent, pinned rtpengine passthrough flags | |
 | M12 | Transit (A→B→C): per-hop receipts chained by a shared reference | |
@@ -89,6 +89,13 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 - The bootstrap records every member's certificate fingerprint in its signed registry entry.
 - Tests over a real TLS socket (uvicorn in-process): matching certificate accepted, another node's certificate refused, no certificate refused, binding switchable. Lab: the observer's certificate carrying node-a's signature is refused by node-b.
 
+### M9: Fraud baselines — done; OVS client — blocked on the API spec
+
+- Per-route daily metrics in the engine store; trailing 7-day baselines (minimum 3 days of history).
+- `acd_anomaly` and `asr_anomaly` compare against the route's own history when it exists. The new `volume_spike` rule catches traffic surges. Absolute thresholds remain the fallback.
+- Tests: baseline-driven ACD, ASR and volume rules; the minimum-history fallback; the trailing-window maths and idempotent re-recording.
+- Open Voice Shield: OVS analyses calls that traverse its own SIP hop and reports verdicts per call by signed webhook. Wiring it in means ingesting those webhooks keyed by Call-ID and mapping verdicts into the gate. That needs the webhook payload schema and signature scheme, and `ovs.telecomsxchange.com` is not reachable from the build environment. The stub adapter (config keys, fail-closed) stays until the spec is provided.
+
 ## Follow-up work (known gaps)
 
 | Gap | Why it matters | Plan |
@@ -96,7 +103,6 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 | SRTP passthrough verification | The lab uses plain RTP; `media.e2e` is always false | SRTP-capable test agent; pin rtpengine flags |
 | Registry revocation | Members can be added by majority but not removed; anchors cannot rotate | Signed revocation objects endorsed by a majority; anchor rotation by majority |
 | Transit (A→B→C) | Phase 1 refuses numbers outside the terminating node's own ranges | Per-hop receipts chained by a shared reference |
-| Fraud baselines | ACD/ASR rules use absolute thresholds; there is no trailing per-prefix history yet | Keep per-prefix daily aggregates and compare against a trailing window |
 | Open Voice Shield | Adapter is a stub (config keys, fail-closed) | Implement the HTTP client against the OVS scoring API |
 | Dispute resolution | Disputes are listed and excluded; there is no workflow to resolve them | Re-proposal or manual adjudication, logged as new entries |
 
