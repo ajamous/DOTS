@@ -202,3 +202,40 @@ def test_srtp_end_to_end_and_plain_rtp_not(
                     srtp_calls += 1
     if any(s.get("srtp") for s in scenarios):
         assert srtp_calls == 2 * sum(s["calls"] for s in scenarios if s.get("srtp"))
+
+
+def test_transit_chain_one_receipt_per_hop(
+    client: DotsClient, scenarios: list[dict[str, Any]], logs: Logs
+) -> None:
+    """A call node-a routes through node-b to node-c's number: an A-B receipt and
+    a B-C receipt per call, each dual-signed and in both of its parties' logs,
+    the onward one linked to the upstream leg under node-b's signature, and the
+    caller's Identity (attestation A, signed by node-a) verified by node-c."""
+    for s in scenarios:
+        if "transit" not in s:
+            continue
+        up = [e for e in matching(logs[s["orig"]], s) if "receipt" in e["entry"]]
+        assert len(up) == s["calls"], s["name"]
+        nxt = s["transit"]
+        onward = {
+            e["entry"]["receipt"]["proposal"]["transit_of"]: e["entry"]
+            for e in logs[s["term"]]
+            if "receipt" in e["entry"]
+            and e["entry"]["receipt"]["proposal"]["term_node"] == nxt["term"]
+            and e["entry"]["receipt"]["proposal"].get("transit_of")
+        }
+        downstream_log = {canonical(e["entry"]) for e in logs[nxt["term"]]}
+        for e in up:
+            p = e["entry"]["receipt"]["proposal"]
+            assert "transit_of" not in p  # node-a originated it: no upstream
+            link = call_key(p["orig_node"], p["call_id"], p["from_tag"])
+            o = onward.get(link)
+            assert o is not None, (s["name"], p["call_id"])
+            sr = SignedReceipt.model_validate(o)
+            assert verify_receipt(client.keyring, sr) == []
+            r = sr.receipt
+            assert (r.proposal.orig_node, r.proposal.call_id) == (s["term"], p["call_id"])
+            assert r.proposal.dest_prefix == nxt["prefix"]
+            assert r.agreed_billed_seconds == s["billed"]
+            assert r.term_attestation_verified == "A"  # node-a's PASSporT, passed on
+            assert canonical(o) in downstream_log  # node-c logged the same bytes

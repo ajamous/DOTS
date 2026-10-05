@@ -61,3 +61,24 @@ def test_genesis_registry_verifies_and_unsigned_is_refused(tmp_path: Path) -> No
     plain.write_text(json.dumps({"v": 1, "peers": []}))
     with pytest.raises(ValueError, match="not a signed registry"):
         Keyring.load(plain)
+
+
+def test_transit_routes_and_carriers(tmp_path: Path) -> None:
+    from dots_lab.bootstrap import kamailio_node_cfg
+
+    topo = {
+        **TOPO,
+        "transit": {
+            "routes": {"node-a": {"12": "node-b", "1212": "node-c"}},
+            "carries": {"node-b": ["node-a"]},
+        },
+    }
+    a = kamailio_node_cfg("node-a", topo)
+    via = a[a.index("route[DOTS_VIA]") :]
+    assert via.index('"^1212"') < via.index('"^12"')  # longest prefix first
+    assert '$var(via) = "node-c"' in via
+    assert "$var(transit_ok) = 1" not in a  # node-a carries nobody
+    b = kamailio_node_cfg("node-b", topo)
+    carries = b[b.index("route[DOTS_TRANSIT]") :]
+    assert '$var(peer) == "node-a"' in carries
+    assert '$var(via) = "node' not in b  # node-b routes nothing via others

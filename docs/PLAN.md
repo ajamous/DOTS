@@ -64,7 +64,7 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 | M9 | Per-route fraud baselines (done); Open Voice Shield client (waiting on the OVS webhook/API spec) | in progress |
 | M10 | Dispute resolution: re-proposal or adjudication, logged as new entries | done |
 | M11 | SRTP end to end: SRTP-capable test agent, pinned rtpengine passthrough flags | done |
-| M12 | Transit (A→B→C): per-hop receipts chained by a shared reference | |
+| M12 | Transit (A→B→C): per-hop receipts chained by a shared reference | done |
 | M13 | Kamailio 6.1 once `deb.kamailio.org` is reachable from CI | |
 
 ### M6: Durable call-end spool — done
@@ -111,13 +111,19 @@ Milestones in priority order. Each lands as its own PR with CI green (lint, type
 - Lab: new `srtp` group (C→B, 4 SDES-SRTP calls via SIPp's SRTP engine, plus a new C→B rate for 4420). Both nodes report e2e with packets both ways, and every plain RTP call reports false.
 - Not done: DTLS-SRTP end to end. It needs rtpengine not to anchor the media, which trades away the packet counts.
 
+### M12: Transit — done
+
+- Originating nodes can route prefixes through a transit peer (generated `DOTS_VIA`). Transit nodes carry only allow-listed upstream peers (`DOTS_TRANSIT`) towards the number's home node, verify the Identity header and pass it on unchanged, and emit two call-end events (in and out, the second with `upstream_peer`).
+- One receipt per hop. The onward proposal carries `transit_of`, the upstream leg's call key, under the transit node's signature; it is omitted on ordinary proposals. Each hop settles in its own pair statement.
+- Tests: protocol (no field on ordinary proposals, link under signature, `upstream_peer` only on an outbound leg from a third node), bootstrap (longest-prefix via routes, carrier allow-list). Lab: new `transit` group (A dials C's 1212 numbers via B). It asserts an A–B and a B–C receipt per call, each dual-signed in its parties' logs, the link, C verifying A's attestation, and both statements' totals.
+
 ## Follow-up work (known gaps)
 
 | Gap | Why it matters | Plan |
 |---|---|---|
 | DTLS-SRTP end to end | SDES end to end is verified; with DTLS-SRTP, rtpengine terminates DTLS unless it stops anchoring media | Operator option: passthrough without anchoring (no packet counts) |
 | Registry revocation | Members can be added by majority but not removed; anchors cannot rotate | Signed revocation objects endorsed by a majority; anchor rotation by majority |
-| Transit (A→B→C) | Phase 1 refuses numbers outside the terminating node's own ranges | Per-hop receipts chained by a shared reference |
+| Multi-hop transit | One transit node per call; chain legs are not cross-checked | Chains of transit nodes; a fraud rule comparing linked legs, given both pairs' consent |
 | Open Voice Shield | Adapter is a stub (config keys, fail-closed) | Webhook receiver for `call.analyzed` (HMAC-SHA256 `X-OVS-Signature`), verdicts keyed by Call-ID into the gate |
 
 ## Corrections to the brief (proposed; details in ARCHITECTURE.md)

@@ -118,7 +118,7 @@ sequenceDiagram
   end
 ```
 
-Correlation key for matching the proposal with B's own CDR: `(orig_node, call_id, from_tag)`. Call-ID alone is not unique across time or across operators. Phase 1 calls between nodes are direct (A to B, no transit node), and both Kamailio instances run as proxies, so Call-ID and From-tag are preserved end to end. Transit (A to B to C) is a chain of bilateral receipts, one per hop, and is out of scope for Phase 1.
+Correlation key for matching the proposal with B's own CDR: `(orig_node, call_id, from_tag)`. Call-ID alone is not unique across time or across operators. Phase 1 calls between nodes are direct (A to B, no transit node), and both Kamailio instances run as proxies, so Call-ID and From-tag are preserved end to end. Transit (A to B to C) is a chain of bilateral receipts, one per hop (§5.8).
 
 If B's CDR arrives after A's proposal, B queues the proposal for `match_window` (default 60 s). If no CDR shows up, B opens a `missing_term_cdr` dispute. If B has a CDR for a call that came from a peer and no proposal arrives within `proposal_window`, B opens a `missing_proposal` dispute. A proposal that is never answered becomes a `missing_countersignature` dispute on A's side.
 
@@ -316,6 +316,23 @@ Flow:
 **One receipt per call.** Suppose the terminating node had already countersigned the call, but the originator never got that receipt (it logged `missing_countersignature`). The terminating node then returns that same receipt, not a second one, and both logs end up holding it. The engine enforces the same rule independently (§7.7).
 
 Each step is authorized by the operator who would lose by it. The originator re-proposes, which accepts at most its own figure. The terminating node signs only what it measured, unless its operator approved the concession. Adjudication by a third party is deliberately not part of the protocol. The two parties' signatures are what settlement relies on, so an adjudicator's ruling would still have to end in a re-proposal and a countersignature.
+
+### 5.8 Transit (Phase 2, M12)
+
+An operator can reach a number range through another operator rather than directly. For example, A has no commercial terms with C and buys termination to C's ranges from B. Settlement stays strictly bilateral: **one receipt per hop**.
+
+```
+A ──INVITE──▶ B ──INVITE──▶ C      receipts:  A→B (A pays B the transit rate)
+                                              B→C (B pays C, as for its own traffic)
+```
+
+- **Routing is local policy, not registry content.** The registry still says who *owns* a range. Which peer an operator uses to reach it is its own business: a generated `DOTS_VIA` route at the originating node. The transit node accepts transit only from upstream peers it agreed to carry (`DOTS_TRANSIT`), never back to the peer the call came from, and only towards the number's home node, so the chain cannot loop.
+- **Identity.** The transit node verifies the caller's PASSporT and passes the Identity header on unchanged. It does not re-sign, so the terminating node verifies the originating operator's attestation directly.
+- **Events.** The transit node's Kamailio emits two call-end events for the one dialog: `in` from the upstream peer and `out` to the next node. The second carries `upstream_peer`.
+- **The link.** The onward proposal carries `transit_of`, the call key of the upstream leg (`call_key(A, call_id, from_tag)`; the Call-ID and From-tag are preserved because every node is a proxy). It is covered by the transit node's signature, so anyone holding both logs can line up A→B with B→C. The field is absent on ordinary proposals, so their signed bytes are unchanged.
+- **Money.** Each hop settles in its own pair statement at its own rate table: the A–B table carries a transit rate for C's prefix, and the B–C table carries B's rate. No hop's statement depends on another's.
+
+Not in M12: multi-hop chains beyond one transit node, and cross-checking a chain's legs against each other (for example, onward duration not above upstream duration) in the fraud gate. Each needs both pairs' receipts in one place, which the bilateral design deliberately avoids.
 
 ## 6. Merkle log
 
@@ -516,7 +533,7 @@ As built in Milestone 3: `node/kamailio/kamailio.cfg`, plus `instance.cfg` (writ
 | Kamailio | **6.0.5** from the Ubuntu 26.04 LTS archive (`kamailio`, `kamailio-tls-modules`, `kamailio-secsipid-modules`, `kamailio-json-modules`, `kamailio-extra-modules`, `kamailio-utils-modules`). Upstream latest stable is 6.1.4; `--build-arg BASE_IMAGE=ubuntu:24.04 --build-arg KAMAILIO_REPO=kamailio61` builds from `deb.kamailio.org` instead. That variant is a manual option: `deb.kamailio.org:443` was unreachable from both this build environment and GitHub-hosted runners on 2026-10-04, so CI does not exercise it. See decision D9 in PLAN.md. Do not use the Docker Hub `kamailio/kamailio-ci` images: they stop at 5.5.2 |
 | Config | No template engine. `#!substdef` values in `instance.cfg` (addresses, DMQ peer, rtpengine socket, receipt-service URL and token) and `node.cfg` (node id, STIR key and x5u, generated `DOTS_RANGES` and `DOTS_PEER` routes) |
 | Customer side | UDP 5060. Calls from the operator's access subnet (`is_in_subnet`) are originations; the operator's PBX registers AOR `pbx` from the same subnet |
-| Federation side | TLS 5061, `verify_certificate` + `require_certificate`, lab CA. The peer is the CN of its verified client certificate (`$tls_peer_subject_cn`), which must be a registry node. A peer may only send numbers in our own ranges (no transit in Phase 1) |
+| Federation side | TLS 5061, `verify_certificate` + `require_certificate`, lab CA. The peer is the CN of its verified client certificate (`$tls_peer_subject_cn`), which must be a registry node. A peer may only send numbers in our own ranges, unless we carry its transit (§5.8) |
 | Number routing | Static E.164 ranges per node from the peer registry, compiled to a longest-prefix route (§8.1) |
 | Registrar replication | `dmq` + `dmq_usrloc` over mutual TLS, **inside one operator's cluster only**. KDMQ is accepted only over TLS with a verified certificate whose CN is our own node id |
 | STIR/SHAKEN | `secsipid` (libsecsipid). Originating side: `secsipid_add_identity(src, dst, "A", "", x5u, key)` with the node's ES256 STIR key. x5u is `http://<node>:8088/stir/cert.pem`, served by Kamailio itself through `xhttp`. Terminating side: `secsipid_check_identity("")` fetches x5u and validates the certificate against the lab STI-CA (`libopt CertVerify=5`: time validity + custom root), then reads `attest` from the PASSporT. In production SHAKEN certificates must chain to an STI-PA-approved CA |

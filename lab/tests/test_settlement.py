@@ -44,27 +44,32 @@ def expected(
 ) -> dict[tuple[str, str], dict[str, Any]]:
     """Per ordered (payer, payee): passed gross, held calls and held amount."""
     out: dict[tuple[str, str], dict[str, Any]] = {}
+    legs = []
     for entries in groups.values():
         for s in entries:
-            if s["expect"] != "receipt":
-                continue
-            r = rate(topo, s["orig"], s["term"], s["dial"])
-            amount = (
-                Decimal(billable(s["billed"], r["interval_1"], r["interval_n"]))
-                * Decimal(r["rate_per_min"])
-                / Decimal(60)
-                * s["calls"]
-            )
-            d = out.setdefault(
-                (s["orig"], s["term"]),
-                {"gross": Decimal(0), "calls": 0, "held_calls": 0, "held": Decimal(0)},
-            )
-            if s.get("fraud") == "hold":
-                d["held_calls"] += s["calls"]
-                d["held"] += amount
-            else:
-                d["gross"] += amount
-                d["calls"] += s["calls"]
+            legs.append(s)
+            if "transit" in s:  # the onward hop is a receipt of its own
+                legs.append({**s, "orig": s["term"], "term": s["transit"]["term"]})
+    for s in legs:
+        if s["expect"] != "receipt":
+            continue
+        r = rate(topo, s["orig"], s["term"], s["dial"])
+        amount = (
+            Decimal(billable(s["billed"], r["interval_1"], r["interval_n"]))
+            * Decimal(r["rate_per_min"])
+            / Decimal(60)
+            * s["calls"]
+        )
+        d = out.setdefault(
+            (s["orig"], s["term"]),
+            {"gross": Decimal(0), "calls": 0, "held_calls": 0, "held": Decimal(0)},
+        )
+        if s.get("fraud") == "hold":
+            d["held_calls"] += s["calls"]
+            d["held"] += amount
+        else:
+            d["gross"] += amount
+            d["calls"] += s["calls"]
     return out
 
 

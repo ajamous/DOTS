@@ -209,7 +209,9 @@ def pytest(groups: list[str], verbose: bool, *paths: str, env: dict[str, str] | 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--groups", default="normal,srtp,short_burst,duration_mismatch,recovery,outage")
+    ap.add_argument(
+        "--groups", default="normal,srtp,transit,short_burst,duration_mismatch,recovery,outage"
+    )
     ap.add_argument("--skip-calls", action="store_true", help="only run the assertions")
     ap.add_argument("--verbose", action="store_true", help="list every assertion")
     args = ap.parse_args()

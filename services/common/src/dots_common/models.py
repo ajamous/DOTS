@@ -98,9 +98,16 @@ class CallEnd(Strict):
     attestation: Attestation = "none"
     identity_verified: bool = False
     media: MediaStats | None = None
+    # Transit (ARCHITECTURE.md §5.8): on the outbound leg of a call this node
+    # carries for another operator, the node the call came from.
+    upstream_peer: NodeId | None = None
 
     @model_validator(mode="after")
     def _times(self) -> "CallEnd":
+        if self.upstream_peer is not None and (
+            self.direction != "out" or self.upstream_peer in (self.peer_node, self.node_id)
+        ):
+            raise ValueError("upstream_peer only on an outbound transit leg, from a third node")
         if self.status == "answered":
             if self.answer_ts is None:
                 raise ValueError("answered call without answer_ts")
@@ -134,6 +141,7 @@ class LocalCdr(Strict):
     rate_id: str | None = None
     attestation: Attestation
     media: MediaStats | None = None
+    transit_of: B64 | None = None
 
     @property
     def peer_node(self) -> str:
@@ -162,6 +170,16 @@ class Proposal(Strict):
     rate_id: str = Field(min_length=1, max_length=64)
     attestation: Attestation
     orig_key_id: KeyId
+    # Call key of the upstream leg when the originating node is carrying this
+    # call in transit (§5.8). Absent, not null, on ordinary proposals.
+    transit_of: B64 | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_transit(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        if data.get("transit_of") is None:
+            data.pop("transit_of", None)
+        return data
 
     @model_validator(mode="after")
     def _consistent(self) -> "Proposal":

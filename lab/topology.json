@@ -15,6 +15,13 @@
     {"payer": "node-c", "payee": "node-b", "prefix": "4477", "rate_per_min": "0.0310", "interval_1": 6, "interval_n": 6},
     {"payer": "node-c", "payee": "node-b", "prefix": "4420", "rate_per_min": "0.0120", "interval_1": 6, "interval_n": 6},
     {"payer": "node-c", "payee": "node-a", "prefix": "4479", "rate_per_min": "0.0290", "interval_1": 6, "interval_n": 6},
-    {"payer": "node-a", "payee": "node-c", "prefix": "1", "rate_per_min": "0.0950", "interval_1": 6, "interval_n": 6}
-  ]
+    {"payer": "node-a", "payee": "node-c", "prefix": "1", "rate_per_min": "0.0950", "interval_1": 6, "interval_n": 6},
+    {"payer": "node-a", "payee": "node-b", "prefix": "1212", "rate_per_min": "0.0180", "interval_1": 6, "interval_n": 6},
+    {"payer": "node-b", "payee": "node-c", "prefix": "1212", "rate_per_min": "0.0140", "interval_1": 6, "interval_n": 6}
+  ],
+  "transit": {
+    "comment": "node-a reaches 1212 (in node-c's range) through node-b, which carries node-a's traffic onward",
+    "routes": {"node-a": {"1212": "node-b"}},
+    "carries": {"node-b": ["node-a"]}
+  }
 }
