@@ -121,7 +121,12 @@ def run_group(name: str, entries: list[dict], header: bool = True) -> None:
     failed = []
     for e, p in procs:
         out, _ = p.communicate()
-        if p.returncode != 0:
+        # 253 is SIPp's RTP validation: it compares each packet sent with the
+        # one received, expecting an echo. The PBX streams its own SRTP instead
+        # (SIPp 3.7.7's UAS rtp_echo action hangs), so SRTP calls are checked
+        # through the nodes' media records in lab/tests instead.
+        ok = (0, 253) if e.get("srtp") else (0,)
+        if p.returncode not in ok:
             failed.append(e["name"])
             print(out[-3000:])
     if failed:
