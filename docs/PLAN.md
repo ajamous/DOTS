@@ -142,6 +142,7 @@ All Phase 2 milestones are done, except the Open Voice Shield client (part of M9
 - Tests:
   - Unit: RADIUS parsing and authenticators, Sippy's time format, leg mapping, acknowledge-after-store, B2BUA matching in both orders, and the without-`origid` and wrong-`origid` cases.
   - Lab: two simulated Sippy switches through B2BUAs produce one dual-signed receipt, and every Kamailio receipt carries an `origid`.
+- **Correction to M11, found while adding `origid`.** Kamailio refuses `msg_apply_changes()` once `record_route()` has run. On requests, the SRTP `e2e` check therefore compared the `a=crypto` line against the unmodified message, so the offer side could never fail. `record_route()` now runs just before relaying, after rtpengine. Verified in the lab: the `c=` line changes across rtpengine on both legs, proving the check reads the rewritten SDP, while the caller's and callee's `a=crypto` keys pass both nodes byte-identical. The M11 conclusion (keys forwarded unchanged with `DTLS=off SDES-nonew ICE=remove`) holds; only its per-call proof was weaker than described until now.
 - Still to do:
   - Confirm the exact way a production Sippy Softswitch exports the PASSporT `origid` into accounting. The adapter reads it from a `dots-origid` (or `x-dots-ref`) Cisco-AVPair.
   - Adapters for other switches (CDR files, other RADIUS dialects).
