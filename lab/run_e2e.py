@@ -132,6 +132,10 @@ def run_group(name: str, entries: list[dict], header: bool = True) -> None:
         if p.returncode not in ok:
             failed.append(e["name"])
             print(out[-3000:])
+            # SIPp's own account of what went wrong (unexpected messages, timeouts)
+            err = sh("exec", "-T", e["uac"], "cat", f"/tmp/{e['name']}.err", check=False, capture=True)
+            print(f"--- SIPp error file for {e['name']} ---")
+            print(err.stdout[-6000:])
     if failed:
         sys.exit(f"SIPp scenarios failed: {failed}")
 
